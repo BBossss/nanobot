@@ -135,6 +135,8 @@ def test_cases_cli_commands(tmp_path: Path, monkeypatch) -> None:
     shown = runner.invoke(app, ["cases", "show", item["id"]])
     assert shown.exit_code == 0
     assert "CLI Case" in shown.stdout
+    assert "Metadata" in shown.stdout
+    assert "root_cause" in shown.stdout
 
     src = tmp_path / "legacy.txt"
     src.write_text("legacy case content", encoding="utf-8")

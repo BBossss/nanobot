@@ -898,6 +898,53 @@ def _save_approvals(path: Path, commands: list[str]) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+def _split_markdown_frontmatter(content: str) -> tuple[dict[str, str | list[str]], str]:
+    """Parse simple YAML-like frontmatter and return (metadata, markdown_body)."""
+    text = content or ""
+    if not text.startswith("---\n"):
+        return {}, text
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return {}, text
+
+    end_idx = -1
+    for idx in range(1, len(lines)):
+        if lines[idx].strip() == "---":
+            end_idx = idx
+            break
+    if end_idx == -1:
+        return {}, text
+
+    metadata: dict[str, str | list[str]] = {}
+    current_list_key: str | None = None
+    for raw in lines[1:end_idx]:
+        line = raw.rstrip()
+        if line.startswith("  - "):
+            if current_list_key is not None:
+                existing = metadata.setdefault(current_list_key, [])
+                if isinstance(existing, list):
+                    existing.append(line[4:].strip())
+            continue
+        if ":" in line:
+            key, value = line.split(":", 1)
+            key = key.strip()
+            value = value.strip()
+            if not key:
+                current_list_key = None
+                continue
+            if value == "":
+                metadata[key] = []
+                current_list_key = key
+            else:
+                metadata[key] = value
+                current_list_key = None
+        else:
+            current_list_key = None
+
+    body = "\n".join(lines[end_idx + 1 :]).lstrip("\n")
+    return metadata, body
+
+
 @approvals_app.command("list")
 def approvals_list():
     """List approved commands."""
@@ -1006,7 +1053,41 @@ def cases_show(case_id: str = typer.Argument(..., help="Case ID, e.g. INC-202603
 
     console.print(f"[cyan]{item.get('id', '')}[/cyan] {item.get('title', '')}")
     if content:
-        console.print(Markdown(content))
+        metadata, body = _split_markdown_frontmatter(content)
+        if metadata:
+            table = Table(title="Metadata")
+            table.add_column("Field", style="cyan", no_wrap=True)
+            table.add_column("Value")
+            ordered = [
+                "id",
+                "title",
+                "source",
+                "created_at",
+                "trigger",
+                "host",
+                "service",
+                "severity",
+                "status",
+                "root_cause",
+                "tags",
+                "import_source",
+            ]
+            seen: set[str] = set()
+            for key in ordered:
+                if key not in metadata:
+                    continue
+                val = metadata[key]
+                shown = ", ".join(val) if isinstance(val, list) else str(val)
+                table.add_row(key, shown)
+                seen.add(key)
+            for key, val in metadata.items():
+                if key in seen:
+                    continue
+                shown = ", ".join(val) if isinstance(val, list) else str(val)
+                table.add_row(key, shown)
+            console.print(table)
+        if body.strip():
+            console.print(Markdown(body))
     else:
         console.print("[yellow]Case file missing on disk, but index entry exists.[/yellow]")
 
