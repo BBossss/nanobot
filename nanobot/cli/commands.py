@@ -1099,6 +1099,102 @@ def inspection_run(
 
 
 # ============================================================================
+# Cron Commands
+# ============================================================================
+
+
+cron_app = typer.Typer(help="Manage scheduled jobs")
+app.add_typer(cron_app, name="cron")
+
+
+def _cron_service():
+    from nanobot.config.loader import get_data_dir
+    from nanobot.cron.service import CronService
+
+    return CronService(get_data_dir() / "cron" / "jobs.json")
+
+
+@cron_app.command("add")
+def cron_add(
+    name: str = typer.Option(..., "--name", help="Job name"),
+    message: str = typer.Option(..., "--message", help="Job message"),
+    every_seconds: int | None = typer.Option(None, "--every-seconds", help="Run every N seconds"),
+    cron_expr: str | None = typer.Option(None, "--cron", help="Cron expression"),
+    tz: str | None = typer.Option(None, "--tz", help="Timezone for --cron (e.g. Asia/Shanghai)"),
+    at: str | None = typer.Option(None, "--at", help="Run once at ISO datetime"),
+):
+    """Add a cron job."""
+    from datetime import datetime
+
+    from nanobot.cron.types import CronSchedule
+
+    if tz and not cron_expr:
+        console.print("[red]Error: tz can only be used with --cron[/red]")
+        raise typer.Exit(1)
+    if sum(1 for x in [every_seconds, cron_expr, at] if x) != 1:
+        console.print("[red]Error: choose exactly one of --every-seconds / --cron / --at[/red]")
+        raise typer.Exit(1)
+
+    if every_seconds:
+        schedule = CronSchedule(kind="every", every_ms=every_seconds * 1000)
+    elif cron_expr:
+        schedule = CronSchedule(kind="cron", expr=cron_expr, tz=tz)
+    else:
+        dt = datetime.fromisoformat(str(at))
+        schedule = CronSchedule(kind="at", at_ms=int(dt.timestamp() * 1000))
+
+    try:
+        job = _cron_service().add_job(
+            name=name,
+            schedule=schedule,
+            message=message,
+            delete_after_run=(schedule.kind == "at"),
+        )
+    except ValueError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[green]Added job[/green] {job.id} ({job.schedule.kind})")
+
+
+@cron_app.command("list")
+def cron_list():
+    """List cron jobs."""
+    jobs = _cron_service().list_jobs(include_disabled=True)
+    if not jobs:
+        console.print("[yellow]No jobs.[/yellow]")
+        return
+    table = Table(title="Cron Jobs")
+    table.add_column("ID", style="cyan")
+    table.add_column("Name")
+    table.add_column("Schedule")
+    table.add_column("Enabled")
+    for j in jobs:
+        schedule = j.schedule.kind
+        if j.schedule.kind == "every":
+            schedule = f"every {int((j.schedule.every_ms or 0) / 1000)}s"
+        elif j.schedule.kind == "cron":
+            schedule = f"cron {j.schedule.expr or ''} ({j.schedule.tz or 'local'})"
+        elif j.schedule.kind == "at":
+            schedule = f"at {j.schedule.at_ms}"
+        table.add_row(j.id, j.name, schedule, "yes" if j.enabled else "no")
+    console.print(table)
+
+
+@cron_app.command("remove")
+def cron_remove(job_id: str = typer.Argument(..., help="Job ID")):
+    """Remove one cron job."""
+    ok = _cron_service().remove_job(job_id)
+    if not ok:
+        console.print(f"[red]Job not found:[/red] {job_id}")
+        raise typer.Exit(1)
+    console.print(f"[green]Removed[/green] {job_id}")
+
+
+# ============================================================================
 # OAuth Login
 # ============================================================================
 
