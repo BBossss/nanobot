@@ -698,6 +698,15 @@ def channels_status():
         slack_config
     )
 
+    # Mattermost
+    mm = config.channels.mattermost
+    mm_config = mm.base_url if mm.base_url else "[dim]not configured[/dim]"
+    table.add_row(
+        "Mattermost",
+        "✓" if mm.enabled else "✗",
+        mm_config
+    )
+
     # DingTalk
     dt = config.channels.dingtalk
     dt_config = f"client_id: {dt.client_id[:10]}..." if dt.client_id else "[dim]not configured[/dim]"

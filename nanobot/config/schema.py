@@ -177,6 +177,15 @@ class SlackConfig(Base):
     dm: SlackDMConfig = Field(default_factory=SlackDMConfig)
 
 
+class MattermostConfig(Base):
+    """Mattermost channel configuration."""
+
+    enabled: bool = False
+    base_url: str = ""  # e.g. https://mm.example.com
+    token: str = ""  # Bot personal access token
+    allow_from: list[str] = Field(default_factory=list)  # Allowed Mattermost user IDs
+
+
 class QQConfig(Base):
     """QQ channel configuration using botpy SDK."""
 
@@ -213,6 +222,7 @@ class ChannelsConfig(Base):
     dingtalk: DingTalkConfig = Field(default_factory=DingTalkConfig)
     email: EmailConfig = Field(default_factory=EmailConfig)
     slack: SlackConfig = Field(default_factory=SlackConfig)
+    mattermost: MattermostConfig = Field(default_factory=MattermostConfig)
     qq: QQConfig = Field(default_factory=QQConfig)
     matrix: MatrixConfig = Field(default_factory=MatrixConfig)
 
