@@ -1,6 +1,7 @@
 """CLI commands for nanobot."""
 
 import asyncio
+import json
 import os
 import select
 import signal
@@ -860,6 +861,77 @@ def status():
             else:
                 has_key = bool(p.api_key)
                 console.print(f"{spec.label}: {'[green]✓[/green]' if has_key else '[dim]not set[/dim]'}")
+
+
+# ============================================================================
+# Approval Commands
+# ============================================================================
+
+
+approvals_app = typer.Typer(help="Manage manual command approvals for exec tool")
+app.add_typer(approvals_app, name="approvals")
+
+
+def _approval_file_from_config() -> Path:
+    from nanobot.config.loader import load_config
+
+    cfg = load_config()
+    return Path(cfg.tools.exec.approval_file).expanduser()
+
+
+def _load_approvals(path: Path) -> list[str]:
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        commands = data.get("commands", [])
+        if isinstance(commands, list):
+            return [str(c) for c in commands if str(c).strip()]
+    except Exception:
+        return []
+    return []
+
+
+def _save_approvals(path: Path, commands: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"version": 1, "commands": commands}
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+@approvals_app.command("list")
+def approvals_list():
+    """List approved commands."""
+    path = _approval_file_from_config()
+    commands = _load_approvals(path)
+    if not commands:
+        console.print("[yellow]No approved commands.[/yellow]")
+        return
+    console.print(f"[cyan]Approval file:[/cyan] {path}")
+    for c in commands:
+        console.print(f"- {c}")
+
+
+@approvals_app.command("grant")
+def approvals_grant(command: str = typer.Option(..., "--command", "-c", help="Exact command string to approve")):
+    """Grant manual approval for one exact command."""
+    path = _approval_file_from_config()
+    commands = _load_approvals(path)
+    if command not in commands:
+        commands.append(command)
+        _save_approvals(path, commands)
+    console.print(f"[green]Approved:[/green] {command}")
+    console.print(f"[dim]{path}[/dim]")
+
+
+@approvals_app.command("revoke")
+def approvals_revoke(command: str = typer.Option(..., "--command", "-c", help="Exact command string to revoke")):
+    """Revoke manual approval for one exact command."""
+    path = _approval_file_from_config()
+    commands = _load_approvals(path)
+    kept = [c for c in commands if c != command]
+    _save_approvals(path, kept)
+    console.print(f"[green]Revoked:[/green] {command}")
+    console.print(f"[dim]{path}[/dim]")
 
 
 # ============================================================================

@@ -341,6 +341,38 @@ class ExecToolConfig(Base):
 
     timeout: int = 60
     path_append: str = ""
+    readonly_mode: bool = False
+    allowed_commands: list[str] = Field(default_factory=lambda: [
+        "ls",
+        "pwd",
+        "cat",
+        "head",
+        "tail",
+        "grep",
+        "rg",
+        "find",
+        "wc",
+        "stat",
+        "du",
+        "df",
+        "ps",
+        "top",
+        "uname",
+        "whoami",
+        "id",
+        "date",
+        "uptime",
+        "free",
+        "vmstat",
+        "iostat",
+        "netstat",
+        "ss",
+        "dmesg",
+        "journalctl",
+        "systemctl",
+        "kubectl",
+    ])
+    approval_file: str = "~/.nanobot/workspace/approvals/exec_allow.json"
 
 
 class DiagnosticsToolConfig(Base):

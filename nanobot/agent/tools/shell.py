@@ -1,6 +1,7 @@
 """Shell execution tool."""
 
 import asyncio
+import json
 import os
 import re
 from pathlib import Path
@@ -20,6 +21,9 @@ class ExecTool(Tool):
         allow_patterns: list[str] | None = None,
         restrict_to_workspace: bool = False,
         path_append: str = "",
+        readonly_mode: bool = False,
+        allowed_commands: list[str] | None = None,
+        approval_file: str | None = None,
     ):
         self.timeout = timeout
         self.working_dir = working_dir
@@ -37,6 +41,9 @@ class ExecTool(Tool):
         self.allow_patterns = allow_patterns or []
         self.restrict_to_workspace = restrict_to_workspace
         self.path_append = path_append
+        self.readonly_mode = readonly_mode
+        self.allowed_commands = {c.strip().lower() for c in (allowed_commands or []) if c.strip()}
+        self.approval_file = Path(approval_file).expanduser() if approval_file else None
 
     @property
     def name(self) -> str:
@@ -135,6 +142,12 @@ class ExecTool(Tool):
             if not any(re.search(p, lower) for p in self.allow_patterns):
                 return "Error: Command blocked by safety guard (not in allowlist)"
 
+        if self.readonly_mode and not self._is_command_allowed(cmd):
+            return (
+                "Error: Command requires manual approval in readonly mode. "
+                f"Approve it with: nanobot approvals grant --command {cmd!r}"
+            )
+
         if self.restrict_to_workspace:
             if "..\\" in cmd or "../" in cmd:
                 return "Error: Command blocked by safety guard (path traversal detected)"
@@ -150,6 +163,32 @@ class ExecTool(Tool):
                     return "Error: Command blocked by safety guard (path outside working dir)"
 
         return None
+
+    def _is_command_allowed(self, command: str) -> bool:
+        base = self._extract_base_command(command)
+        if base and base in self.allowed_commands:
+            return True
+        return command in self._load_manual_approvals()
+
+    def _load_manual_approvals(self) -> set[str]:
+        if not self.approval_file or not self.approval_file.exists():
+            return set()
+        try:
+            data = json.loads(self.approval_file.read_text(encoding="utf-8"))
+            commands = data.get("commands", [])
+            if isinstance(commands, list):
+                return {str(c) for c in commands if str(c).strip()}
+        except Exception:
+            return set()
+        return set()
+
+    @staticmethod
+    def _extract_base_command(command: str) -> str:
+        cmd = command.strip()
+        if not cmd:
+            return ""
+        token = re.split(r"\s+", cmd, maxsplit=1)[0].strip().lower()
+        return token
 
     @staticmethod
     def _extract_absolute_paths(command: str) -> list[str]:

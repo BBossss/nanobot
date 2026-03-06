@@ -136,6 +136,9 @@ class AgentLoop:
             timeout=self.exec_config.timeout,
             restrict_to_workspace=self.restrict_to_workspace,
             path_append=self.exec_config.path_append,
+            readonly_mode=self.exec_config.readonly_mode,
+            allowed_commands=self.exec_config.allowed_commands,
+            approval_file=self.exec_config.approval_file,
         ))
         diag_cfg = self.diagnostics_config
         if diag_cfg is None or diag_cfg.enabled:
