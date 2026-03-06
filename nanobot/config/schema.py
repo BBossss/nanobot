@@ -281,6 +281,14 @@ class GatewayConfig(Base):
     heartbeat: HeartbeatConfig = Field(default_factory=HeartbeatConfig)
 
 
+class CasesConfig(Base):
+    """Case record storage configuration."""
+
+    enabled: bool = True
+    auto_record: bool = True
+    path: str = "~/.nanobot/workspace/notes/cases"
+
+
 class WebSearchConfig(Base):
     """Web search tool configuration."""
 
@@ -340,6 +348,7 @@ class Config(BaseSettings):
     channels: ChannelsConfig = Field(default_factory=ChannelsConfig)
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
+    cases: CasesConfig = Field(default_factory=CasesConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
 
     @property

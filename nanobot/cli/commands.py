@@ -287,6 +287,7 @@ def gateway(
         web_proxy=config.tools.web.proxy or None,
         exec_config=config.tools.exec,
         diagnostics_config=config.tools.diagnostics,
+        cases_config=config.cases,
         cron_service=cron,
         restrict_to_workspace=config.tools.restrict_to_workspace,
         session_manager=session_manager,
@@ -471,6 +472,7 @@ def agent(
         web_proxy=config.tools.web.proxy or None,
         exec_config=config.tools.exec,
         diagnostics_config=config.tools.diagnostics,
+        cases_config=config.cases,
         cron_service=cron,
         restrict_to_workspace=config.tools.restrict_to_workspace,
         mcp_servers=config.tools.mcp_servers,
@@ -824,6 +826,116 @@ def status():
             else:
                 has_key = bool(p.api_key)
                 console.print(f"{spec.label}: {'[green]✓[/green]' if has_key else '[dim]not set[/dim]'}")
+
+
+# ============================================================================
+# Case Commands
+# ============================================================================
+
+
+cases_app = typer.Typer(help="Manage troubleshooting cases")
+app.add_typer(cases_app, name="cases")
+
+
+@cases_app.command("list")
+def cases_list(
+    limit: int = typer.Option(20, "--limit", "-n", help="Max rows to show"),
+    keyword: str = typer.Option("", "--keyword", "-k", help="Filter by keyword in title/summary"),
+    tag: str = typer.Option("", "--tag", help="Filter by tag"),
+    host: str = typer.Option("", "--host", help="Filter by host"),
+    service: str = typer.Option("", "--service", help="Filter by service"),
+):
+    """List stored troubleshooting cases."""
+    from nanobot.cases.store import CaseStore
+    from nanobot.config.loader import load_config
+
+    config = load_config()
+    store = CaseStore(config.workspace_path, config.cases.path)
+    if any((keyword, tag, host, service)):
+        rows = store.search_cases(
+            keyword=keyword,
+            tag=tag,
+            host=host,
+            service=service,
+            limit=limit,
+        )
+    else:
+        rows = store.list_cases(limit=limit)
+
+    if not rows:
+        console.print("[yellow]No cases found.[/yellow]")
+        raise typer.Exit(0)
+
+    table = Table(title="Cases")
+    table.add_column("ID", style="cyan")
+    table.add_column("Title")
+    table.add_column("Severity", style="red")
+    table.add_column("Status", style="green")
+    table.add_column("Created", style="yellow")
+    table.add_column("Tags")
+    for row in rows:
+        table.add_row(
+            str(row.get("id", "")),
+            str(row.get("title", "")),
+            str(row.get("severity", "")),
+            str(row.get("status", "")),
+            str(row.get("created_at", ""))[:16],
+            ",".join([str(t) for t in row.get("tags", [])]),
+        )
+    console.print(table)
+
+
+@cases_app.command("show")
+def cases_show(case_id: str = typer.Argument(..., help="Case ID, e.g. INC-20260307-001")):
+    """Show a case record by ID."""
+    from nanobot.cases.store import CaseStore
+    from nanobot.config.loader import load_config
+
+    config = load_config()
+    store = CaseStore(config.workspace_path, config.cases.path)
+    item, content = store.get_case(case_id)
+    if not item:
+        console.print(f"[red]Case not found:[/red] {case_id}")
+        raise typer.Exit(1)
+
+    console.print(f"[cyan]{item.get('id', '')}[/cyan] {item.get('title', '')}")
+    if content:
+        console.print(Markdown(content))
+    else:
+        console.print("[yellow]Case file missing on disk, but index entry exists.[/yellow]")
+
+
+@cases_app.command("import")
+def cases_import(
+    path: str = typer.Argument(..., help="File or folder path to import (.md/.txt/.json)"),
+):
+    """Import existing troubleshooting records."""
+    from nanobot.cases.importer import CaseImporter
+    from nanobot.cases.store import CaseStore
+    from nanobot.config.loader import load_config
+
+    config = load_config()
+    store = CaseStore(config.workspace_path, config.cases.path)
+    importer = CaseImporter(store)
+
+    try:
+        imported = importer.import_path(path)
+    except FileNotFoundError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Import failed:[/red] {e}")
+        raise typer.Exit(1)
+
+    if not imported:
+        console.print("[yellow]No supported files found to import.[/yellow]")
+        raise typer.Exit(0)
+
+    console.print(f"[green]Imported {len(imported)} case(s).[/green]")
+    for item in imported[:10]:
+        console.print(f"  - {item.get('id', '')} {item.get('title', '')}")
+    if len(imported) > 10:
+        console.print(f"  ... and {len(imported) - 10} more")
 
 
 # ============================================================================

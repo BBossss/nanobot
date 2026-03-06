@@ -29,11 +29,12 @@ from nanobot.agent.tools.spawn import SpawnTool
 from nanobot.agent.tools.web import WebFetchTool, WebSearchTool
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
+from nanobot.cases.store import CaseStore
 from nanobot.providers.base import LLMProvider
 from nanobot.session.manager import Session, SessionManager
 
 if TYPE_CHECKING:
-    from nanobot.config.schema import ChannelsConfig, DiagnosticsToolConfig, ExecToolConfig
+    from nanobot.config.schema import CasesConfig, ChannelsConfig, DiagnosticsToolConfig, ExecToolConfig
     from nanobot.cron.service import CronService
 
 
@@ -66,6 +67,7 @@ class AgentLoop:
         web_proxy: str | None = None,
         exec_config: ExecToolConfig | None = None,
         diagnostics_config: DiagnosticsToolConfig | None = None,
+        cases_config: CasesConfig | None = None,
         cron_service: CronService | None = None,
         restrict_to_workspace: bool = False,
         session_manager: SessionManager | None = None,
@@ -87,6 +89,7 @@ class AgentLoop:
         self.web_proxy = web_proxy
         self.exec_config = exec_config or ExecToolConfig()
         self.diagnostics_config = diagnostics_config
+        self.cases_config = cases_config
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
 
@@ -117,6 +120,10 @@ class AgentLoop:
         self._consolidation_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
         self._active_tasks: dict[str, list[asyncio.Task]] = {}  # session_key -> tasks
         self._processing_lock = asyncio.Lock()
+        self._case_store = CaseStore(
+            workspace=self.workspace,
+            cases_path=cases_config.path if cases_config else None,
+        )
         self._register_default_tools()
 
     def _register_default_tools(self) -> None:
@@ -473,6 +480,8 @@ class AgentLoop:
         self._save_turn(session, all_msgs, 1 + len(history))
         self.sessions.save(session)
 
+        self._maybe_record_case(msg, final_content)
+
         if (mt := self.tools.get("message")) and isinstance(mt, MessageTool) and mt._sent_in_turn:
             return None
 
@@ -482,6 +491,39 @@ class AgentLoop:
             channel=msg.channel, chat_id=msg.chat_id, content=final_content,
             metadata=msg.metadata or {},
         )
+
+    def _maybe_record_case(self, msg: InboundMessage, final_content: str) -> None:
+        cfg = self.cases_config
+        if cfg and not cfg.enabled:
+            return
+        if cfg and not cfg.auto_record:
+            return
+        cmd = msg.content.strip().lower()
+        if cmd.startswith("/"):
+            return
+        summary = msg.content[:3000]
+        conclusion = final_content[:3000]
+        title = summary.splitlines()[0].strip() if summary.strip() else "Troubleshooting case"
+        title = title[:120]
+        tags = [msg.channel] if msg.channel else ["troubleshooting"]
+        item = self._case_store.write_case(
+            title=title or "Troubleshooting case",
+            trigger=msg.channel,
+            source="generated",
+            summary=summary,
+            evidence="Collected from request/response flow",
+            conclusion=conclusion,
+            suggestion="Review results and continue with next checks if needed",
+            status="open",
+            tags=tags,
+        )
+
+        entry = (
+            f"[{item['created_at'][:16]}] CASE {item['id']} | "
+            f"channel={msg.channel} | title={item['title']} | "
+            f"conclusion={conclusion[:160]}"
+        )
+        MemoryStore(self.workspace).append_history(entry)
 
     def _save_turn(self, session: Session, messages: list[dict], skip: int) -> None:
         """Save new-turn messages into session, truncating large tool results."""
