@@ -302,6 +302,16 @@ class ExecToolConfig(Base):
     path_append: str = ""
 
 
+class DiagnosticsToolConfig(Base):
+    """Readonly diagnostics tool configuration."""
+
+    enabled: bool = True
+    timeout: int = 20
+    max_read_lines: int = 2000
+    max_search_hits: int = 100
+    allowed_paths: list[str] = Field(default_factory=lambda: ["/var/log", "/opt/logs"])
+
+
 class MCPServerConfig(Base):
     """MCP server connection configuration (stdio or HTTP)."""
 
@@ -318,6 +328,7 @@ class ToolsConfig(Base):
 
     web: WebToolsConfig = Field(default_factory=WebToolsConfig)
     exec: ExecToolConfig = Field(default_factory=ExecToolConfig)
+    diagnostics: DiagnosticsToolConfig = Field(default_factory=DiagnosticsToolConfig)
     restrict_to_workspace: bool = False  # If true, restrict all tool access to workspace directory
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
 
