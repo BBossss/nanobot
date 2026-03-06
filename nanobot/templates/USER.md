@@ -4,45 +4,48 @@ Information about the user to help personalize interactions.
 
 ## Basic Information
 
-- **Name**: (your name)
-- **Timezone**: (your timezone, e.g., UTC+8)
-- **Language**: (preferred language)
+- **Name**: Ruibin
+- **Timezone**: UTC+8
+- **Language**: 中文（可接受英文术语）
 
 ## Preferences
 
 ### Communication Style
 
 - [ ] Casual
-- [ ] Professional
-- [ ] Technical
+- [x] Professional
+- [x] Technical
 
 ### Response Length
 
-- [ ] Brief and concise
+- [x] Brief and concise
 - [ ] Detailed explanations
-- [ ] Adaptive based on question
+- [x] Adaptive based on question
 
 ### Technical Level
 
 - [ ] Beginner
 - [ ] Intermediate
-- [ ] Expert
+- [x] Expert
 
 ## Work Context
 
-- **Primary Role**: (your role, e.g., developer, researcher)
-- **Main Projects**: (what you're working on)
-- **Tools You Use**: (IDEs, languages, frameworks)
+- **Primary Role**: HCI 排障助手项目负责人 / 运维工程师
+- **Main Projects**: 基于 nanobot 构建 HCI 现场排障助手（案例沉淀、巡检、IM 接入）
+- **Tools You Use**: Python、CLI、GitHub、Telegram、Mattermost
 
 ## Topics of Interest
 
-- 
-- 
-- 
+- HCI 故障定位与根因分析
+- 自动化巡检与报告
+- 多模型提供商接入与稳定性优化
 
 ## Special Instructions
 
-(Any specific instructions for how the assistant should behave)
+- 优先给可执行步骤，不要泛泛而谈。
+- 结论必须绑定证据来源或验证动作。
+- 默认从安全视角出发，先只读排查，再建议变更动作。
+- 能沉淀为案例就沉淀，便于后续复用。
 
 ---
 
