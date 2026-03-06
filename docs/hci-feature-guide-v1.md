@@ -248,6 +248,47 @@ CLI：
 }
 ```
 
+## 5.1 CRS（claude-relay-service）接入说明
+
+当使用开源聚合平台 CRS 时，建议优先使用 OpenAI 兼容路由：
+
+- 推荐：`/droid/openai`
+- 谨慎使用：`/openai`（该路由偏 Responses 形态）
+
+原因：
+
+- 当前 nanobot 的 `custom` provider 使用 OpenAI 兼容 `chat.completions` 方式。
+- CRS 的 `/droid/openai` 路由与该模式兼容度更高。
+
+推荐配置示例：
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "provider": "custom",
+      "model": "gpt-5-codex"
+    }
+  },
+  "providers": {
+    "custom": {
+      "apiKey": "cr_xxx",
+      "apiBase": "http://<crs-host>:3000/droid/openai"
+    }
+  }
+}
+```
+
+验证步骤：
+
+```bash
+nanobot status
+nanobot agent -m "回复 ok"
+nanobot gateway
+```
+
+如 CRS 环境要求额外认证头，可通过 `providers.custom.extraHeaders` 添加。
+
 ---
 
 ## 6. 使用指南
@@ -371,3 +412,4 @@ scripts/run_hci_acceptance.sh --mode full
 - `/Users/ruibinhuang/repos/nanobot/docs/inspection-and-report-spec-v1.md`
 - `/Users/ruibinhuang/repos/nanobot/docs/case-record-spec-v1.md`
 - `/Users/ruibinhuang/repos/nanobot/docs/command-whitelist-spec-v1.md`
+- `https://github.com/Wei-Shaw/claude-relay-service`
