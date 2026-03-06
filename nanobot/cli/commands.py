@@ -945,6 +945,32 @@ def _split_markdown_frontmatter(content: str) -> tuple[dict[str, str | list[str]
     return metadata, body
 
 
+def _parse_case_sections(body: str) -> list[tuple[str, str]]:
+    """Parse '# Section' style markdown into (section, content) pairs."""
+    lines = (body or "").splitlines()
+    sections: list[tuple[str, str]] = []
+    current_title = ""
+    current_lines: list[str] = []
+
+    def _flush() -> None:
+        nonlocal current_title, current_lines
+        if current_title:
+            sections.append((current_title, "\n".join(current_lines).strip() or "(empty)"))
+        current_title = ""
+        current_lines = []
+
+    for line in lines:
+        if line.startswith("# "):
+            _flush()
+            current_title = line[2:].strip()
+            continue
+        if current_title:
+            current_lines.append(line)
+
+    _flush()
+    return sections
+
+
 @approvals_app.command("list")
 def approvals_list():
     """List approved commands."""
@@ -1087,7 +1113,15 @@ def cases_show(case_id: str = typer.Argument(..., help="Case ID, e.g. INC-202603
                 table.add_row(key, shown)
             console.print(table)
         if body.strip():
-            console.print(Markdown(body))
+            sections = _parse_case_sections(body)
+            if sections:
+                for idx, (title, text) in enumerate(sections):
+                    if idx > 0:
+                        console.print()
+                    console.print(f"[bold cyan]{title}[/bold cyan]")
+                    console.print(text)
+            else:
+                console.print(body)
     else:
         console.print("[yellow]Case file missing on disk, but index entry exists.[/yellow]")
 

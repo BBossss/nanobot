@@ -137,6 +137,10 @@ def test_cases_cli_commands(tmp_path: Path, monkeypatch) -> None:
     assert "CLI Case" in shown.stdout
     assert "Metadata" in shown.stdout
     assert "root_cause" in shown.stdout
+    assert "Problem" in shown.stdout
+    assert "Evidence" in shown.stdout
+    assert "Conclusion" in shown.stdout
+    assert "Suggestion" in shown.stdout
 
     src = tmp_path / "legacy.txt"
     src.write_text("legacy case content", encoding="utf-8")
