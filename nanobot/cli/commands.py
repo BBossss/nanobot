@@ -300,6 +300,31 @@ def gateway(
         """Execute a cron job through the agent."""
         from nanobot.agent.tools.cron import CronTool
         from nanobot.agent.tools.message import MessageTool
+        from nanobot.inspection.service import InspectionService
+
+        if job.payload.kind == "system_event":
+            if job.payload.message.startswith("inspection:run"):
+                service = InspectionService(
+                    workspace=config.workspace_path,
+                    inspection=config.inspection,
+                    provider=provider,
+                    model=config.agents.defaults.model,
+                    cases=config.cases,
+                )
+                result = await service.run(trigger="cron")
+                if result.get("status") == "disabled":
+                    return "Inspection is disabled in config."
+                text = (
+                    f"Inspection done: targets={result.get('targets', 0)} "
+                    f"findings={result.get('findings', 0)} "
+                    f"errors={result.get('target_errors', 0)}\n"
+                    f"Report: {result.get('report_path', '')}"
+                )
+                if result.get("case_id"):
+                    text += f"\nCase: {result['case_id']}"
+                return text
+            return f"Unsupported system event: {job.payload.message}"
+
         reminder_note = (
             "[Scheduled Task] Timer finished.\n\n"
             f"Task '{job.name}' has been triggered.\n"
