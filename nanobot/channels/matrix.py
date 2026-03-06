@@ -454,7 +454,7 @@ class MatrixChannel(BaseChannel):
                 await asyncio.sleep(2)
 
     async def _on_room_invite(self, room: MatrixRoom, event: InviteEvent) -> None:
-        if self.is_allowed(event.sender):
+        if self._is_sender_allowed(event.sender):
             await self.client.join(room.room_id)
 
     def _is_direct_room(self, room: MatrixRoom) -> bool:
@@ -476,7 +476,7 @@ class MatrixChannel(BaseChannel):
 
     def _should_process_message(self, room: MatrixRoom, event: RoomMessage) -> bool:
         """Apply sender and room policy checks."""
-        if not self.is_allowed(event.sender):
+        if not self._is_sender_allowed(event.sender):
             return False
         if self._is_direct_room(room):
             return True
@@ -488,6 +488,16 @@ class MatrixChannel(BaseChannel):
         if policy == "mention":
             return self._is_bot_mentioned(event)
         return False
+
+    def _is_sender_allowed(self, sender_id: str) -> bool:
+        """Matrix policy: empty allow_from means open; otherwise enforce allowlist."""
+        allow_list = getattr(self.config, "allow_from", None) or []
+        if not allow_list:
+            return True
+        if "*" in allow_list:
+            return True
+        sender = str(sender_id)
+        return sender in allow_list
 
     def _media_dir(self) -> Path:
         d = get_data_dir() / "media" / "matrix"
