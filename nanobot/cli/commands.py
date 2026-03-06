@@ -939,6 +939,60 @@ def cases_import(
 
 
 # ============================================================================
+# Inspection Commands
+# ============================================================================
+
+
+inspection_app = typer.Typer(help="Run inspection scans and generate reports")
+app.add_typer(inspection_app, name="inspection")
+
+
+@inspection_app.command("run")
+def inspection_run(
+    trigger: str = typer.Option("manual", "--trigger", help="Trigger source label"),
+    use_llm: bool = typer.Option(True, "--llm/--no-llm", help="Use model analysis"),
+):
+    """Run one inspection and print result summary."""
+    from nanobot.config.loader import load_config
+    from nanobot.inspection.service import InspectionService
+
+    config = load_config()
+    provider = None
+    if use_llm:
+        try:
+            provider = _make_provider(config)
+        except Exception:
+            provider = None
+            console.print("[yellow]Provider not available, continue without model analysis.[/yellow]")
+
+    service = InspectionService(
+        workspace=config.workspace_path,
+        inspection=config.inspection,
+        provider=provider,
+        model=config.agents.defaults.model if provider else None,
+        cases=config.cases,
+    )
+
+    async def _run():
+        return await service.run(trigger=trigger)
+
+    result = asyncio.run(_run())
+    if result.get("status") == "disabled":
+        console.print("[yellow]Inspection is disabled in config.[/yellow]")
+        raise typer.Exit(0)
+
+    console.print(
+        f"[green]Inspection done[/green] "
+        f"targets={result.get('targets', 0)} "
+        f"findings={result.get('findings', 0)} "
+        f"errors={result.get('target_errors', 0)}"
+    )
+    console.print(f"Report: {result.get('report_path', '')}")
+    if result.get("case_id"):
+        console.print(f"Case: {result['case_id']}")
+
+
+# ============================================================================
 # OAuth Login
 # ============================================================================
 

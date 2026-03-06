@@ -289,6 +289,29 @@ class CasesConfig(Base):
     path: str = "~/.nanobot/workspace/notes/cases"
 
 
+class InspectionTargetConfig(Base):
+    """Single inspection target definition."""
+
+    name: str = ""
+    kind: Literal["log_file", "journal", "command"] = "log_file"
+    enabled: bool = True
+    path: str = ""
+    command: str = ""
+    unit: str = ""
+    keywords: list[str] = Field(default_factory=list)
+    max_lines: int = 500
+    max_matches: int = 50
+
+
+class InspectionConfig(Base):
+    """Inspection and report configuration."""
+
+    enabled: bool = True
+    report_dir: str = "~/.nanobot/workspace/reports/inspection"
+    generate_case_on: Literal["never", "error", "always"] = "error"
+    targets: list[InspectionTargetConfig] = Field(default_factory=list)
+
+
 class WebSearchConfig(Base):
     """Web search tool configuration."""
 
@@ -349,6 +372,7 @@ class Config(BaseSettings):
     providers: ProvidersConfig = Field(default_factory=ProvidersConfig)
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     cases: CasesConfig = Field(default_factory=CasesConfig)
+    inspection: InspectionConfig = Field(default_factory=InspectionConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
 
     @property
