@@ -971,6 +971,23 @@ def _parse_case_sections(body: str) -> list[tuple[str, str]]:
     return sections
 
 
+def _format_case_created(value: str) -> str:
+    s = (value or "").strip()
+    if len(s) >= 16 and "T" in s:
+        return s.replace("T", " ")[:16]
+    return s[:16]
+
+
+def _shorten_path_for_display(path_str: str) -> str:
+    p = Path(path_str).expanduser()
+    try:
+        home = Path.home().resolve()
+        resolved = p.resolve()
+        return "~/" + str(resolved.relative_to(home))
+    except Exception:
+        return path_str
+
+
 @approvals_app.command("list")
 def approvals_list():
     """List approved commands."""
@@ -1050,7 +1067,7 @@ def cases_list(
     table.add_column("Title")
     table.add_column("Severity", style="red")
     table.add_column("Status", style="green")
-    table.add_column("Created", style="yellow")
+    table.add_column("Created", style="yellow", no_wrap=True)
     table.add_column("Tags")
     for row in rows:
         table.add_row(
@@ -1058,7 +1075,7 @@ def cases_list(
             str(row.get("title", "")),
             str(row.get("severity", "")),
             str(row.get("status", "")),
-            str(row.get("created_at", ""))[:16],
+            _format_case_created(str(row.get("created_at", ""))),
             ",".join([str(t) for t in row.get("tags", [])]),
         )
     console.print(table)
@@ -1208,7 +1225,9 @@ def inspection_run(
         f"findings={result.get('findings', 0)} "
         f"errors={result.get('target_errors', 0)}"
     )
-    console.print(f"Report: {result.get('report_path', '')}")
+    report_path = result.get("report_path", "")
+    console.print("Report:")
+    console.print(f"  {_shorten_path_for_display(report_path)}")
     if result.get("case_id"):
         console.print(f"Case: {result['case_id']}")
 
