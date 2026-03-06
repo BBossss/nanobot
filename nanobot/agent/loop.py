@@ -507,6 +507,8 @@ class AgentLoop:
             return
         if cfg and not cfg.auto_record:
             return
+        if cfg and not self._should_record_case(msg.content, cfg.record_mode):
+            return
         cmd = msg.content.strip().lower()
         if cmd.startswith("/"):
             return
@@ -533,6 +535,37 @@ class AgentLoop:
             f"conclusion={conclusion[:160]}"
         )
         MemoryStore(self.workspace).append_history(entry)
+
+    @staticmethod
+    def _should_record_case(content: str, mode: str) -> bool:
+        if mode == "manual":
+            return False
+        if mode == "every_turn":
+            return True
+        text = (content or "").strip()
+        if not text:
+            return False
+        lower = text.lower()
+
+        # Don't create new case records for question-style messages.
+        if "?" in text or "？" in text or lower.endswith("吗"):
+            return False
+
+        end_markers = (
+            "结束",
+            "查完了",
+            "完成排查",
+            "排查完成",
+            "故障已恢复",
+            "归档",
+            "生成案例摘要",
+            "保存案例",
+            "保存摘要",
+            "总结并保存",
+            "done",
+            "wrap up",
+        )
+        return any(mark in lower for mark in end_markers)
 
     def _save_turn(self, session: Session, messages: list[dict], skip: int) -> None:
         """Save new-turn messages into session, truncating large tool results."""

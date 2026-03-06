@@ -296,6 +296,7 @@ class CasesConfig(Base):
 
     enabled: bool = True
     auto_record: bool = True
+    record_mode: Literal["every_turn", "end_only", "manual"] = "every_turn"
     path: str = "~/.nanobot/workspace/notes/cases"
 
 

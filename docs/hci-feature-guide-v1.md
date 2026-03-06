@@ -205,6 +205,7 @@ CLI：
   "cases": {
     "enabled": true,
     "autoRecord": true,
+    "recordMode": "end_only",
     "path": "~/.nanobot/workspace/notes/cases"
   },
   "inspection": {
@@ -247,6 +248,12 @@ CLI：
   }
 }
 ```
+
+其中 `cases.recordMode` 含义：
+
+- `every_turn`：每轮对话都自动记案例
+- `end_only`：仅在结束/总结类消息时自动记案例（推荐）
+- `manual`：不自动记案例，改为手动触发
 
 ## 5.1 CRS（claude-relay-service）接入说明
 
