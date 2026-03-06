@@ -120,7 +120,7 @@ class AgentLoop:
         self._consolidation_tasks: set[asyncio.Task] = set()  # Strong refs to in-flight tasks
         self._consolidation_locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
         self._active_tasks: dict[str, list[asyncio.Task]] = {}  # session_key -> tasks
-        self._processing_lock = asyncio.Lock()
+        self._session_locks: dict[str, asyncio.Lock] = {}
         self._case_store = CaseStore(
             workspace=self.workspace,
             cases_path=cases_config.path if cases_config else None,
@@ -335,8 +335,9 @@ class AgentLoop:
         ))
 
     async def _dispatch(self, msg: InboundMessage) -> None:
-        """Process a message under the global lock."""
-        async with self._processing_lock:
+        """Process a message under the session lock."""
+        lock = self._session_locks.setdefault(msg.session_key, asyncio.Lock())
+        async with lock:
             try:
                 response = await self._process_message(msg)
                 if response is not None:
