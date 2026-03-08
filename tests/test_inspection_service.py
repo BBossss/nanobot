@@ -4,7 +4,7 @@ import pytest
 from typer.testing import CliRunner
 
 from nanobot.cli.commands import app
-from nanobot.config.schema import Config, InspectionTargetConfig
+from nanobot.config.schema import Config, ExecToolConfig, InspectionTargetConfig
 from nanobot.inspection.service import InspectionService
 
 
@@ -76,6 +76,40 @@ async def test_inspection_run_with_command_target_error_is_degraded(tmp_path: Pa
     assert result["findings"] == 0
     assert result["target_errors"] == 1
     assert Path(result["report_path"]).exists()
+
+
+@pytest.mark.asyncio
+async def test_inspection_command_target_respects_exec_readonly_guard(tmp_path: Path) -> None:
+    cfg = _build_config(tmp_path)
+    cfg.inspection.targets = [
+        InspectionTargetConfig(
+            name="restart-attempt",
+            kind="command",
+            command="systemctl restart kubelet",
+            max_lines=100,
+            max_matches=10,
+        )
+    ]
+
+    service = InspectionService(
+        workspace=cfg.workspace_path,
+        inspection=cfg.inspection,
+        provider=None,
+        model=None,
+        cases=cfg.cases,
+        exec_config=ExecToolConfig(
+            readonly_mode=True,
+            allowed_commands=["ls", "cat"],
+            approval_file=str(tmp_path / "approvals.json"),
+        ),
+    )
+    result = await service.run(trigger="cron")
+    assert result["status"] == "ok"
+    assert result["findings"] == 0
+    assert result["target_errors"] == 1
+
+    report = Path(result["report_path"]).read_text(encoding="utf-8")
+    assert "manual approval" in report
 
 
 def test_inspection_cli_run(tmp_path: Path, monkeypatch) -> None:

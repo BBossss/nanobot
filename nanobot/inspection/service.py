@@ -9,8 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from nanobot.cases.store import CaseStore
-from nanobot.config.schema import CasesConfig, InspectionConfig, InspectionTargetConfig
+from nanobot.config.schema import CasesConfig, ExecToolConfig, InspectionConfig, InspectionTargetConfig
 from nanobot.providers.base import LLMProvider
+from nanobot.security.command_guard import guard_command
 from nanobot.utils.helpers import ensure_dir
 
 
@@ -36,11 +37,13 @@ class InspectionService:
         provider: LLMProvider | None = None,
         model: str | None = None,
         cases: CasesConfig | None = None,
+        exec_config: ExecToolConfig | None = None,
     ):
         self.workspace = workspace
         self.config = inspection
         self.provider = provider
         self.model = model
+        self.exec_config = exec_config or ExecToolConfig()
         self._case_store = CaseStore(workspace, cases.path if cases else None)
         report_dir = Path(self.config.report_dir).expanduser()
         self.report_dir = ensure_dir(report_dir)
@@ -141,6 +144,15 @@ class InspectionService:
     async def _collect_command(self, target: InspectionTargetConfig) -> dict[str, Any]:
         if not target.command.strip():
             return {"name": target.name, "kind": target.kind, "matches": [], "error": "empty command"}
+        guard_error = guard_command(
+            target.command,
+            cwd=str(self.workspace),
+            readonly_mode=self.exec_config.readonly_mode,
+            allowed_commands={c.strip().lower() for c in self.exec_config.allowed_commands if c.strip()},
+            approval_file=Path(self.exec_config.approval_file).expanduser() if self.exec_config.approval_file else None,
+        )
+        if guard_error:
+            return {"name": target.name, "kind": target.kind, "matches": [], "error": guard_error}
         out, err = await self._run_cmd(shlex.split(target.command))
         if err:
             return {"name": target.name, "kind": target.kind, "matches": [], "error": err}

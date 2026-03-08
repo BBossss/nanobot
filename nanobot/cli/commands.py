@@ -311,6 +311,7 @@ def gateway(
                     provider=provider,
                     model=config.agents.defaults.model,
                     cases=config.cases,
+                    exec_config=config.tools.exec,
                 )
                 result = await service.run(trigger="cron")
                 if result.get("status") == "disabled":
@@ -1209,6 +1210,7 @@ def inspection_run(
         provider=provider,
         model=config.agents.defaults.model if provider else None,
         cases=config.cases,
+        exec_config=config.tools.exec,
     )
 
     async def _run():
