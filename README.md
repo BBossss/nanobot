@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="nanobot_logo.png" alt="HCIGuard" width="420">
+  <img src="assets/hciguard-logo.svg" alt="HCIGuard" width="420">
   <h1>HCIGuard</h1>
   <p>HCI troubleshooting assistant built on top of nanobot.</p>
   <p>

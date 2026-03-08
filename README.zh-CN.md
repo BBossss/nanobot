@@ -1,4 +1,7 @@
-# HCIGuard
+<div align="center">
+  <img src="assets/hciguard-logo.svg" alt="HCIGuard" width="420">
+  <h1>HCIGuard</h1>
+</div>
 
 [English](README.md) | 简体中文
 
