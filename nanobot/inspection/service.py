@@ -150,8 +150,6 @@ class InspectionService:
             readonly_mode=self.exec_config.readonly_mode,
             allowed_commands={c.strip().lower() for c in self.exec_config.allowed_commands if c.strip()},
             approval_file=Path(self.exec_config.approval_file).expanduser() if self.exec_config.approval_file else None,
-            allow_ssh_bridge=self.exec_config.allow_ssh_bridge,
-            allowed_ssh_hosts={h.strip().lower() for h in self.exec_config.allowed_ssh_hosts if h.strip()},
         )
         if guard_error:
             self.audit.record(

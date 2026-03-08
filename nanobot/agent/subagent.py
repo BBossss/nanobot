@@ -105,11 +105,6 @@ class SubagentManager:
                 timeout=self.exec_config.timeout,
                 restrict_to_workspace=self.restrict_to_workspace,
                 path_append=self.exec_config.path_append,
-                readonly_mode=self.exec_config.readonly_mode,
-                allowed_commands=self.exec_config.allowed_commands,
-                approval_file=self.exec_config.approval_file,
-                allow_ssh_bridge=self.exec_config.allow_ssh_bridge,
-                allowed_ssh_hosts=self.exec_config.allowed_ssh_hosts,
             ))
             tools.register(WebSearchTool(api_key=self.brave_api_key, proxy=self.web_proxy))
             tools.register(WebFetchTool(proxy=self.web_proxy))

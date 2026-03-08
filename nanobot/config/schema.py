@@ -157,8 +157,6 @@ class ExecToolConfig(Base):
     timeout: int = 60
     path_append: str = ""
     readonly_mode: bool = False
-    allow_ssh_bridge: bool = False
-    allowed_ssh_hosts: list[str] = Field(default_factory=list)
     allowed_commands: list[str] = Field(default_factory=lambda: [
         "ls",
         "pwd",
@@ -200,8 +198,6 @@ class DiagnosticsToolConfig(Base):
     max_read_lines: int = 2000
     max_search_hits: int = 100
     allowed_paths: list[str] = Field(default_factory=lambda: ["/var/log", "/opt/logs"])
-    allow_remote_ssh: bool = False
-    allowed_ssh_hosts: list[str] = Field(default_factory=list)
 
 
 class MCPServerConfig(Base):

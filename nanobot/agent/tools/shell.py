@@ -30,8 +30,6 @@ class ExecTool(Tool):
         readonly_mode: bool = False,
         allowed_commands: list[str] | None = None,
         approval_file: str | None = None,
-        allow_ssh_bridge: bool = False,
-        allowed_ssh_hosts: list[str] | None = None,
     ):
         self.timeout = timeout
         self.working_dir = working_dir
@@ -42,8 +40,6 @@ class ExecTool(Tool):
         self.readonly_mode = readonly_mode
         self.allowed_commands = {c.strip().lower() for c in (allowed_commands or []) if c.strip()}
         self.approval_file = Path(approval_file).expanduser() if approval_file else None
-        self.allow_ssh_bridge = allow_ssh_bridge
-        self.allowed_ssh_hosts = {h.strip().lower() for h in (allowed_ssh_hosts or []) if h.strip()}
         self.audit = CommandAuditLogger(self.working_dir or os.getcwd())
 
     @property
@@ -158,8 +154,6 @@ class ExecTool(Tool):
             readonly_mode=self.readonly_mode,
             allowed_commands=self.allowed_commands,
             approval_file=self.approval_file,
-            allow_ssh_bridge=self.allow_ssh_bridge,
-            allowed_ssh_hosts=self.allowed_ssh_hosts,
         )
 
     def _is_command_allowed(self, command: str) -> bool:

@@ -143,8 +143,6 @@ class AgentLoop:
             readonly_mode=self.exec_config.readonly_mode,
             allowed_commands=self.exec_config.allowed_commands,
             approval_file=self.exec_config.approval_file,
-            allow_ssh_bridge=self.exec_config.allow_ssh_bridge,
-            allowed_ssh_hosts=self.exec_config.allowed_ssh_hosts,
         ))
         diag_cfg = self.diagnostics_config
         if diag_cfg is None or diag_cfg.enabled:
@@ -158,8 +156,6 @@ class AgentLoop:
                 max_read_lines=max_read_lines,
                 max_search_hits=max_search_hits,
                 allowed_paths=allowed_paths,
-                allow_remote_ssh=diag_cfg.allow_remote_ssh if diag_cfg else False,
-                allowed_ssh_hosts=diag_cfg.allowed_ssh_hosts if diag_cfg else [],
             ))
             self.tools.register(DiagnoseLogSearchTool(
                 workspace=self.workspace,
@@ -167,8 +163,6 @@ class AgentLoop:
                 max_read_lines=max_read_lines,
                 max_search_hits=max_search_hits,
                 allowed_paths=allowed_paths,
-                allow_remote_ssh=diag_cfg.allow_remote_ssh if diag_cfg else False,
-                allowed_ssh_hosts=diag_cfg.allowed_ssh_hosts if diag_cfg else [],
             ))
             self.tools.register(DiagnoseSystemStatusTool(
                 workspace=self.workspace,
@@ -176,8 +170,6 @@ class AgentLoop:
                 max_read_lines=max_read_lines,
                 max_search_hits=max_search_hits,
                 allowed_paths=allowed_paths,
-                allow_remote_ssh=diag_cfg.allow_remote_ssh if diag_cfg else False,
-                allowed_ssh_hosts=diag_cfg.allowed_ssh_hosts if diag_cfg else [],
             ))
         self.tools.register(WebSearchTool(api_key=self.brave_api_key, proxy=self.web_proxy))
         self.tools.register(WebFetchTool(proxy=self.web_proxy))
