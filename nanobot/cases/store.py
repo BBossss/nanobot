@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -13,11 +14,15 @@ from nanobot.utils.helpers import ensure_dir, safe_filename
 class CaseStore:
     """Store case records as markdown files plus a lightweight JSON index."""
 
+    _index_locks: dict[str, threading.Lock] = {}
+
     def __init__(self, workspace: Path, cases_path: str | None = None):
         self.workspace = workspace
         root = Path(cases_path).expanduser() if cases_path else workspace / "notes" / "cases"
         self.cases_dir = ensure_dir(root)
         self.index_file = self.cases_dir / "index.json"
+        lock_key = str(self.index_file.resolve())
+        self._index_lock = self._index_locks.setdefault(lock_key, threading.Lock())
 
     def next_case_id(self, now: datetime | None = None) -> str:
         now = now or datetime.now()
@@ -100,7 +105,7 @@ class CaseStore:
         item = {
             "id": case_id,
             "title": title,
-            "path": str(path.relative_to(self.workspace)),
+            "path": self._serialize_case_path(path),
             "source": source,
             "created_at": created,
             "trigger": trigger,
@@ -157,7 +162,7 @@ class CaseStore:
     def get_case(self, case_id: str) -> tuple[dict[str, Any] | None, str | None]:
         for item in self._load_index()["cases"]:
             if item.get("id") == case_id:
-                case_file = self.workspace / item["path"]
+                case_file = self._resolve_case_path(item["path"])
                 if not case_file.exists():
                     return item, None
                 return item, case_file.read_text(encoding="utf-8")
@@ -174,15 +179,31 @@ class CaseStore:
         return {"version": 1, "cases": []}
 
     def _save_index(self, data: dict[str, Any]) -> None:
-        self.index_file.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        payload = json.dumps(data, ensure_ascii=False, indent=2)
+        tmp = self.index_file.with_name(f"{self.index_file.name}.tmp")
+        tmp.write_text(payload, encoding="utf-8")
+        tmp.replace(self.index_file)
 
     def _upsert_index(self, item: dict[str, Any]) -> None:
-        data = self._load_index()
-        cases = data["cases"]
-        for i, old in enumerate(cases):
-            if old.get("id") == item["id"]:
-                cases[i] = item
-                self._save_index(data)
-                return
-        cases.append(item)
-        self._save_index(data)
+        with self._index_lock:
+            data = self._load_index()
+            cases = data["cases"]
+            for i, old in enumerate(cases):
+                if old.get("id") == item["id"]:
+                    cases[i] = item
+                    self._save_index(data)
+                    return
+            cases.append(item)
+            self._save_index(data)
+
+    def _serialize_case_path(self, path: Path) -> str:
+        try:
+            return str(path.relative_to(self.workspace))
+        except ValueError:
+            return str(path)
+
+    def _resolve_case_path(self, raw_path: str) -> Path:
+        path = Path(raw_path).expanduser()
+        if path.is_absolute():
+            return path
+        return self.workspace / path

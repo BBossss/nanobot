@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from pathlib import Path
 
@@ -83,6 +84,45 @@ def test_case_store_search_filters(tmp_path: Path) -> None:
     by_service = store.search_cases(service="net")
     assert len(by_service) == 1
     assert by_service[0]["host"] == "node-b"
+
+
+def test_case_store_supports_cases_path_outside_workspace(tmp_path: Path) -> None:
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    external_cases = tmp_path / "external-cases"
+    store = CaseStore(workspace=workspace, cases_path=str(external_cases))
+
+    item = store.write_case(
+        title="external case",
+        trigger="cli",
+        source="generated",
+        summary="summary",
+        evidence="evidence",
+        conclusion="conclusion",
+        suggestion="suggestion",
+    )
+
+    assert Path(item["path"]).is_absolute()
+    meta, content = store.get_case(item["id"])
+    assert meta is not None
+    assert content is not None
+    assert "external case" in content
+
+
+def test_case_store_saves_index_to_real_file(tmp_path: Path) -> None:
+    store = _make_store(tmp_path)
+    item = store.write_case(
+        title="atomic index",
+        trigger="cli",
+        source="generated",
+        summary="summary",
+        evidence="evidence",
+        conclusion="conclusion",
+        suggestion="suggestion",
+    )
+
+    data = json.loads((tmp_path / "notes" / "cases" / "index.json").read_text(encoding="utf-8"))
+    assert data["cases"][0]["id"] == item["id"]
 
 
 def test_case_importer_imports_text_markdown_and_json(tmp_path: Path) -> None:
