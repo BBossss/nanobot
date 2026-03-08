@@ -64,3 +64,14 @@ def test_runtime_context_is_separate_untrusted_user_message(tmp_path) -> None:
 
     assert messages[-1]["role"] == "user"
     assert messages[-1]["content"] == "Return exactly: OK"
+
+
+def test_routed_skill_content_is_injected_when_requested(tmp_path) -> None:
+    workspace = _make_workspace(tmp_path)
+    builder = ContextBuilder(workspace)
+
+    prompt = builder.build_system_prompt(skill_names=["hci-case-summary"])
+
+    assert "### Skill: hci-troubleshooting" in prompt
+    assert "### Skill: hci-case-summary" in prompt
+    assert "# HCI Case Summary" in prompt

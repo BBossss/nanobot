@@ -35,11 +35,11 @@ class ContextBuilder:
         if memory:
             parts.append(f"# Memory\n\n{memory}")
 
-        always_skills = self.skills.get_always_skills()
-        if always_skills:
-            always_content = self.skills.load_skills_for_context(always_skills)
-            if always_content:
-                parts.append(f"# Active Skills\n\n{always_content}")
+        active_skills = self._active_skills(skill_names)
+        if active_skills:
+            active_content = self.skills.load_skills_for_context(active_skills)
+            if active_content:
+                parts.append(f"# Active Skills\n\n{active_content}")
 
         skills_summary = self.skills.build_skills_summary()
         if skills_summary:
@@ -51,6 +51,16 @@ Skills with available="false" need dependencies installed first - you can try in
 {skills_summary}""")
 
         return "\n\n---\n\n".join(parts)
+
+    def _active_skills(self, skill_names: list[str] | None = None) -> list[str]:
+        """Combine always-on and routed skills while preserving order."""
+        ordered: list[str] = []
+        seen: set[str] = set()
+        for name in [*self.skills.get_always_skills(), *(skill_names or [])]:
+            if name not in seen:
+                seen.add(name)
+                ordered.append(name)
+        return ordered
 
     def _get_identity(self) -> str:
         """Get the core identity section."""

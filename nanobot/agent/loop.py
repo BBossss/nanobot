@@ -33,6 +33,7 @@ from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.cases.store import CaseStore
 from nanobot.policies.cases import CaseRecordPolicy
+from nanobot.policies.skills import SkillRoutingPolicy
 from nanobot.providers.base import LLMProvider
 from nanobot.session.manager import Session, SessionManager
 
@@ -396,7 +397,14 @@ class AgentLoop:
             history = session.get_history(max_messages=self.memory_window)
             messages = self.context.build_messages(
                 history=history,
-                current_message=msg.content, channel=channel, chat_id=chat_id,
+                current_message=msg.content,
+                channel=channel,
+                chat_id=chat_id,
+                skill_names=SkillRoutingPolicy.select_skills(
+                    content=msg.content,
+                    channel=msg.channel,
+                    metadata=msg.metadata,
+                ),
             )
             final_content, _, all_msgs = await self._run_agent_loop(messages)
             self._save_turn(session, all_msgs, 1 + len(history))
@@ -472,7 +480,13 @@ class AgentLoop:
             history=history,
             current_message=msg.content,
             media=msg.media if msg.media else None,
-            channel=msg.channel, chat_id=msg.chat_id,
+            channel=msg.channel,
+            chat_id=msg.chat_id,
+            skill_names=SkillRoutingPolicy.select_skills(
+                content=msg.content,
+                channel=msg.channel,
+                metadata=msg.metadata,
+            ),
         )
 
         async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:
