@@ -256,6 +256,75 @@ V1 优先支持：
 
 - `nanobot cases import <path>`
 
+### 4.3.1 案例导出层（待补）
+
+#### 目标
+
+让案例不仅能导入，也能作为平台资产稳定导出，用于：
+
+- 备份
+- 迁移
+- 交付
+- 离线分析
+- 跨环境同步
+
+#### 设计原则
+
+- 第一版优先保证“可迁移、可读取、可筛选”
+- 导出格式尽量贴近现有案例存储模型
+- 不把 session、memory、audit、report 混进同一导出对象
+
+#### 建议 CLI
+
+建议补充：
+
+- `nanobot cases export <output_dir>`
+
+建议支持筛选参数：
+
+- `--tag`
+- `--host`
+- `--service`
+- `--keyword`
+- `--status`
+- `--limit`
+- `--format bundle|jsonl`
+
+#### 第一版建议格式
+
+优先支持 `bundle`：
+
+```text
+export-dir/
+├── manifest.json
+├── index.json
+└── cases/
+    ├── INC-20260307-001-xxx.md
+    ├── INC-20260307-002-xxx.md
+    └── ...
+```
+
+说明：
+
+- `cases/` 放原始 Markdown 文件
+- `index.json` 放筛选后的案例索引
+- `manifest.json` 描述导出时间、来源、筛选条件、数量
+
+后续可再补：
+
+- `jsonl`
+- `zip`
+- 时间范围筛选
+- 脱敏导出
+
+#### 与导入层的关系
+
+建议目标是：
+
+- `cases export --format bundle` 的结果，可在后续以最小转换成本被 `cases import` 消费
+
+这样可以形成导入 / 导出闭环，避免案例资产只能单向进入平台。
+
 ### 4.4 巡检与报告层
 
 #### 目标

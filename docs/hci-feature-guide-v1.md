@@ -110,6 +110,12 @@ ExecTool readonlyMode 开启后：
 - 导入 `.md/.txt/.json` 历史案例
 - 按关键词/标签/主机/服务检索
 
+当前状态说明：
+
+- 已实现案例导入
+- 尚未实现正式的案例导出命令
+- 当前如需“导出”，只能手工复制案例目录与 `index.json`
+
 CLI：
 
 - `nanobot cases list`
@@ -121,6 +127,57 @@ CLI：
 - `/Users/ruibinhuang/repos/nanobot/nanobot/cases/store.py`
 - `/Users/ruibinhuang/repos/nanobot/nanobot/cases/importer.py`
 - `/Users/ruibinhuang/repos/nanobot/nanobot/cli/commands.py`
+
+## 4.2.1 案例导出能力规划（待实现）
+
+为了让案例成为真正的平台资产，后续建议补充正式的 `cases export` 能力。
+
+建议目标：
+
+- 支持案例备份
+- 支持跨环境迁移
+- 支持筛选导出特定案例集合
+- 支持后续再导入或离线分析
+
+建议 CLI 形式：
+
+```bash
+nanobot cases export <output_dir> \
+  [--tag <tag>] \
+  [--host <host>] \
+  [--service <service>] \
+  [--keyword <keyword>] \
+  [--status <status>] \
+  [--limit <n>] \
+  [--format bundle|jsonl]
+```
+
+第一版建议默认格式为 `bundle`，导出结构如下：
+
+```text
+export-dir/
+├── manifest.json
+├── index.json
+└── cases/
+    ├── INC-20260307-001-xxx.md
+    ├── INC-20260307-002-xxx.md
+    └── ...
+```
+
+其中：
+
+- `cases/` 保存原始 Markdown 案例
+- `index.json` 保存筛选后的索引
+- `manifest.json` 保存导出时间、导出条件、案例数量等元信息
+
+第一版建议只聚焦“案例资产导出”，不混入：
+
+- session 原始对话
+- memory 文件
+- audit 日志
+- inspection 原始报告
+
+这样可以保证导出对象边界清晰，后续再按资产类型补其他导出能力。
 
 ## 4.3 巡检与报告
 
