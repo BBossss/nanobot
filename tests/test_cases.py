@@ -1,4 +1,5 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
@@ -123,6 +124,27 @@ def test_case_store_saves_index_to_real_file(tmp_path: Path) -> None:
 
     data = json.loads((tmp_path / "notes" / "cases" / "index.json").read_text(encoding="utf-8"))
     assert data["cases"][0]["id"] == item["id"]
+
+
+def test_case_store_generates_unique_ids_under_threaded_writes(tmp_path: Path) -> None:
+    store = _make_store(tmp_path)
+
+    def _write(i: int) -> str:
+        item = store.write_case(
+            title=f"case {i}",
+            trigger="cli",
+            source="generated",
+            summary=f"summary {i}",
+            evidence="evidence",
+            conclusion="conclusion",
+            suggestion="suggestion",
+        )
+        return item["id"]
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        ids = list(pool.map(_write, range(8)))
+
+    assert len(ids) == len(set(ids))
 
 
 def test_case_importer_imports_text_markdown_and_json(tmp_path: Path) -> None:

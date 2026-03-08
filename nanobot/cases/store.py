@@ -57,67 +57,69 @@ class CaseStore:
         import_source: str = "",
     ) -> dict[str, Any]:
         now = created_at or datetime.now()
-        case_id = case_id or self.next_case_id(now)
         created = now.isoformat(timespec="seconds")
         tags = tags or []
-        slug = safe_filename((title or "case").lower().replace(" ", "-"))[:60] or "case"
-        path = self.cases_dir / f"{case_id}-{slug}.md"
 
-        frontmatter = [
-            "---",
-            f"id: {case_id}",
-            f"title: {title}",
-            f"source: {source}",
-            f"created_at: {created}",
-            f"trigger: {trigger}",
-            f"host: {host}",
-            f"service: {service}",
-            f"severity: {severity}",
-            f"status: {status}",
-            "root_cause: pending",
-            "tags:",
-        ]
-        if tags:
-            frontmatter.extend([f"  - {t}" for t in tags])
-        else:
-            frontmatter.append("  - troubleshooting")
-        if import_source:
-            frontmatter.append(f"import_source: {import_source}")
-        frontmatter.append("---")
+        with self._index_lock:
+            resolved_case_id = case_id or self.next_case_id(now)
+            slug = safe_filename((title or "case").lower().replace(" ", "-"))[:60] or "case"
+            path = self.cases_dir / f"{resolved_case_id}-{slug}.md"
 
-        body = [
-            "# Problem",
-            summary or "(empty)",
-            "",
-            "# Evidence",
-            evidence or "(empty)",
-            "",
-            "# Conclusion",
-            conclusion or "(empty)",
-            "",
-            "# Suggestion",
-            suggestion or "(empty)",
-            "",
-        ]
-        content = "\n".join(frontmatter + [""] + body)
-        path.write_text(content, encoding="utf-8")
+            frontmatter = [
+                "---",
+                f"id: {resolved_case_id}",
+                f"title: {title}",
+                f"source: {source}",
+                f"created_at: {created}",
+                f"trigger: {trigger}",
+                f"host: {host}",
+                f"service: {service}",
+                f"severity: {severity}",
+                f"status: {status}",
+                "root_cause: pending",
+                "tags:",
+            ]
+            if tags:
+                frontmatter.extend([f"  - {t}" for t in tags])
+            else:
+                frontmatter.append("  - troubleshooting")
+            if import_source:
+                frontmatter.append(f"import_source: {import_source}")
+            frontmatter.append("---")
 
-        item = {
-            "id": case_id,
-            "title": title,
-            "path": self._serialize_case_path(path),
-            "source": source,
-            "created_at": created,
-            "trigger": trigger,
-            "summary": summary[:300],
-            "host": host,
-            "service": service,
-            "severity": severity,
-            "status": status,
-            "tags": tags or ["troubleshooting"],
-        }
-        self._upsert_index(item)
-        return item
+            body = [
+                "# Problem",
+                summary or "(empty)",
+                "",
+                "# Evidence",
+                evidence or "(empty)",
+                "",
+                "# Conclusion",
+                conclusion or "(empty)",
+                "",
+                "# Suggestion",
+                suggestion or "(empty)",
+                "",
+            ]
+            content = "\n".join(frontmatter + [""] + body)
+            path.write_text(content, encoding="utf-8")
+
+            item = {
+                "id": resolved_case_id,
+                "title": title,
+                "path": self._serialize_case_path(path),
+                "source": source,
+                "created_at": created,
+                "trigger": trigger,
+                "summary": summary[:300],
+                "host": host,
+                "service": service,
+                "severity": severity,
+                "status": status,
+                "tags": tags or ["troubleshooting"],
+            }
+            self._upsert_index_unlocked(item)
+            return item
 
     def list_cases(self, limit: int = 20) -> list[dict[str, Any]]:
         cases = sorted(self._load_index()["cases"], key=lambda x: x.get("created_at", ""), reverse=True)
@@ -186,15 +188,18 @@ class CaseStore:
 
     def _upsert_index(self, item: dict[str, Any]) -> None:
         with self._index_lock:
-            data = self._load_index()
-            cases = data["cases"]
-            for i, old in enumerate(cases):
-                if old.get("id") == item["id"]:
-                    cases[i] = item
-                    self._save_index(data)
-                    return
-            cases.append(item)
-            self._save_index(data)
+            self._upsert_index_unlocked(item)
+
+    def _upsert_index_unlocked(self, item: dict[str, Any]) -> None:
+        data = self._load_index()
+        cases = data["cases"]
+        for i, old in enumerate(cases):
+            if old.get("id") == item["id"]:
+                cases[i] = item
+                self._save_index(data)
+                return
+        cases.append(item)
+        self._save_index(data)
 
     def _serialize_case_path(self, path: Path) -> str:
         try:
