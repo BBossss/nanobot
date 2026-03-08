@@ -218,6 +218,8 @@
 - 已明确优先处理“本地运行/测试垃圾”和“WhatsApp bridge 整套”
 - 本地运行/测试垃圾已清理
 - WhatsApp bridge 已成组下线
+- 第二轮渠道精简已完成
+- 当前仓库仅保留 `CLI + Telegram + Mattermost` 作为交互入口
 
 未完成部分：
 
