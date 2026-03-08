@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -110,6 +111,13 @@ async def test_inspection_command_target_respects_exec_readonly_guard(tmp_path: 
 
     report = Path(result["report_path"]).read_text(encoding="utf-8")
     assert "manual approval" in report
+
+    audit_file = tmp_path / "audit" / "commands.jsonl"
+    assert audit_file.exists()
+    payload = json.loads(audit_file.read_text(encoding="utf-8").splitlines()[-1])
+    assert payload["source"] == "inspection.command"
+    assert payload["status"] == "blocked"
+    assert payload["metadata"]["target"] == "restart-attempt"
 
 
 def test_inspection_cli_run(tmp_path: Path, monkeypatch) -> None:

@@ -45,6 +45,31 @@ def test_exec_readonly_allows_manually_approved_exact_command(tmp_path: Path) ->
     assert err is None
 
 
+async def _run_exec(tool: ExecTool, command: str, cwd: Path) -> str:
+    return await tool.execute(command=command, working_dir=str(cwd))
+
+
+def test_exec_writes_audit_record_for_blocked_command(tmp_path: Path) -> None:
+    tool = ExecTool(
+        readonly_mode=True,
+        allowed_commands=["ls"],
+        approval_file=str(tmp_path / "approvals.json"),
+        working_dir=str(tmp_path),
+    )
+
+    import asyncio
+
+    result = asyncio.run(_run_exec(tool, "systemctl restart kubelet", tmp_path))
+    assert "manual approval" in result
+
+    audit_file = tmp_path / "audit" / "commands.jsonl"
+    assert audit_file.exists()
+    payload = json.loads(audit_file.read_text(encoding="utf-8").splitlines()[-1])
+    assert payload["source"] == "exec"
+    assert payload["status"] == "blocked"
+    assert payload["command"] == "systemctl restart kubelet"
+
+
 def test_approvals_cli_grant_list_revoke(tmp_path: Path, monkeypatch) -> None:
     cfg = Config()
     cfg.tools.exec.approval_file = str(tmp_path / "approvals" / "exec_allow.json")

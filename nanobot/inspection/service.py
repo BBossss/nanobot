@@ -11,6 +11,7 @@ from typing import Any
 from nanobot.cases.store import CaseStore
 from nanobot.config.schema import CasesConfig, ExecToolConfig, InspectionConfig, InspectionTargetConfig
 from nanobot.providers.base import LLMProvider
+from nanobot.security.audit import CommandAuditLogger
 from nanobot.security.command_guard import guard_command
 from nanobot.utils.helpers import ensure_dir
 
@@ -44,6 +45,7 @@ class InspectionService:
         self.provider = provider
         self.model = model
         self.exec_config = exec_config or ExecToolConfig()
+        self.audit = CommandAuditLogger(workspace)
         self._case_store = CaseStore(workspace, cases.path if cases else None)
         report_dir = Path(self.config.report_dir).expanduser()
         self.report_dir = ensure_dir(report_dir)
@@ -152,8 +154,24 @@ class InspectionService:
             approval_file=Path(self.exec_config.approval_file).expanduser() if self.exec_config.approval_file else None,
         )
         if guard_error:
+            self.audit.record(
+                source="inspection.command",
+                command=target.command,
+                status="blocked",
+                cwd=str(self.workspace),
+                detail=guard_error,
+                metadata={"target": target.name},
+            )
             return {"name": target.name, "kind": target.kind, "matches": [], "error": guard_error}
         out, err = await self._run_cmd(shlex.split(target.command))
+        self.audit.record(
+            source="inspection.command",
+            command=target.command,
+            status="ok" if not err else "error",
+            cwd=str(self.workspace),
+            detail=(err or out),
+            metadata={"target": target.name},
+        )
         if err:
             return {"name": target.name, "kind": target.kind, "matches": [], "error": err}
         lines = out.splitlines()[-max(1, target.max_lines):]

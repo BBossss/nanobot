@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from nanobot.agent.tools.base import Tool
+from nanobot.security.audit import CommandAuditLogger
 from nanobot.security.command_guard import DEFAULT_DENY_PATTERNS, guard_command, load_manual_approvals, extract_base_command
 
 
@@ -33,6 +34,7 @@ class ExecTool(Tool):
         self.readonly_mode = readonly_mode
         self.allowed_commands = {c.strip().lower() for c in (allowed_commands or []) if c.strip()}
         self.approval_file = Path(approval_file).expanduser() if approval_file else None
+        self.audit = CommandAuditLogger(self.working_dir or os.getcwd())
 
     @property
     def name(self) -> str:
@@ -63,6 +65,13 @@ class ExecTool(Tool):
         cwd = working_dir or self.working_dir or os.getcwd()
         guard_error = self._guard_command(command, cwd)
         if guard_error:
+            self.audit.record(
+                source="exec",
+                command=command,
+                status="blocked",
+                cwd=cwd,
+                detail=guard_error,
+            )
             return guard_error
         
         env = os.environ.copy()
@@ -91,7 +100,9 @@ class ExecTool(Tool):
                     await asyncio.wait_for(process.wait(), timeout=5.0)
                 except asyncio.TimeoutError:
                     pass
-                return f"Error: Command timed out after {self.timeout} seconds"
+                err = f"Error: Command timed out after {self.timeout} seconds"
+                self.audit.record(source="exec", command=command, status="timeout", cwd=cwd, detail=err)
+                return err
             
             output_parts = []
             
@@ -112,11 +123,19 @@ class ExecTool(Tool):
             max_len = 10000
             if len(result) > max_len:
                 result = result[:max_len] + f"\n... (truncated, {len(result) - max_len} more chars)"
-            
+            self.audit.record(
+                source="exec",
+                command=command,
+                status="ok" if process.returncode == 0 else "error",
+                cwd=cwd,
+                detail=result,
+            )
             return result
             
         except Exception as e:
-            return f"Error executing command: {str(e)}"
+            err = f"Error executing command: {str(e)}"
+            self.audit.record(source="exec", command=command, status="error", cwd=cwd, detail=err)
+            return err
 
     def _guard_command(self, command: str, cwd: str) -> str | None:
         """Best-effort safety guard for potentially destructive commands."""
