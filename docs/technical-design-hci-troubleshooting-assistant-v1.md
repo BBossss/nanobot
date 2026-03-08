@@ -52,6 +52,39 @@ V1 在现有 `nanobot` 基础上新增 4 个核心层：
 5. 系统将本次排障沉淀为案例文件与索引摘要
 6. 定时任务按计划执行巡检并生成报告
 
+## 3.1 Skill 机制现状与后续收口
+
+当前 Skill 机制的现状是：
+
+- 所有 Skill 摘要会进入上下文
+- `always=true` 的 Skill 正文会直接注入
+- 其余 Skill 主要依赖模型自行决定是否继续读取
+
+这套机制对通用总纲类 Skill 可用，但对巡检分析、案例总结、专项 SOP 这类场景 Skill 不够稳定。
+
+因此后续设计建议不是继续增加 `always` Skill，而是新增一层显式路由：
+
+- 总纲 Skill 常驻
+- 场景 Skill 按任务附加
+- `AgentLoop` 不直接硬编码业务语义
+
+建议新增：
+
+- `SkillRoutingPolicy`
+
+职责：
+
+- 根据当前消息、来源、阶段、上下文标签选择 Skill
+- 将 Skill 选择逻辑从 `ContextBuilder` 和 `AgentLoop` 中分离
+- 为后续测试和扩展提供稳定边界
+
+推荐目标形态：
+
+1. `hci-troubleshooting` 始终加载
+2. `hci-case-summary` 在案例收尾时附加
+3. `hci-inspection-analysis` 在巡检分析阶段附加
+4. `hci-storage-network-sop` 在专项问题场景附加
+
 ## 4. 模块改造设计
 
 ### 4.1 受控只读命令执行层

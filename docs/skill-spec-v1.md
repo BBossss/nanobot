@@ -44,6 +44,41 @@ policy 负责：
 - 可配置但不适合写死在 Skill 中的规则
 - 例如案例触发模式、默认报告策略、启用哪些 Skill
 
+## 2.1 当前加载机制与问题
+
+当前仓库中的 Skill 机制不是“全部正文加载”，也不是真正的任务级按需加载，而是如下三段式：
+
+1. 所有可用 Skill 的摘要进入 system prompt
+2. `always=true` 的 Skill 正文直接注入 system prompt
+3. 非 `always` Skill 依赖模型自行决定是否继续读取 `SKILL.md`
+
+当前 HCI Skill 中：
+
+- `hci-troubleshooting`：`always=true`
+- `hci-case-summary`：`always=false`
+- `hci-inspection-analysis`：`always=false`
+- `hci-storage-network-sop`：`always=false`
+
+因此当前实际效果是：
+
+- 通用 HCI 排障总纲稳定常驻
+- 案例、巡检、专项 SOP 主要停留在摘要层
+- 是否进一步读取这些 Skill，带有模型自行选择的不确定性
+
+当前机制的优点：
+
+- 实现简单
+- Prompt 成本可控
+- 核心总纲可以稳定注入
+
+当前机制的不足：
+
+- 不能保证场景 Skill 在正确时机稳定生效
+- `skill_names` 参数尚未形成真正的路由闭环
+- 场景化行为仍然带有偶然性
+
+因此后续 Skill 化不应只增加 Skill 数量，而应补 Skill 路由机制。
+
 ---
 
 ## 3. 适合做成 Skill 的内容
@@ -187,6 +222,129 @@ workspace/skills/
 - 入口固定为 `SKILL.md`
 - 大段参考资料放 `references/`
 - 不把大批配置、脚本、日志样例直接堆进 `SKILL.md`
+
+---
+
+## 6.1 推荐 Skill 路由方案
+
+建议将 Skill 分为两层：
+
+### 常驻总纲层
+
+始终加载：
+
+- `hci-troubleshooting`
+
+职责：
+
+- 统一 HCI 排障总流程
+- 统一只读优先、证据优先、风险提示
+- 作为所有排障对话的基线约束
+
+### 场景附加层
+
+根据任务类型显式附加：
+
+- `hci-case-summary`
+- `hci-inspection-analysis`
+- `hci-storage-network-sop`
+
+目标：
+
+- 避免所有 Skill 都设为 `always=true`
+- 避免完全依赖模型自行 `read_file`
+- 在 Prompt 可控的前提下提升场景稳定性
+
+---
+
+## 6.2 推荐路由规则
+
+建议新增 `SkillRoutingPolicy`，根据当前任务选择应附加的 Skill。
+
+输入可包括：
+
+- 用户当前消息
+- 渠道与触发来源
+- 当前阶段（普通对话 / 巡检 / 案例收尾 / system_event）
+- 当前上下文中是否已有报告草稿、案例草稿、专项标签
+
+输出示例：
+
+```text
+["hci-troubleshooting", "hci-inspection-analysis"]
+```
+
+推荐规则如下：
+
+### 规则 A：默认总纲
+
+所有 HCI 排障对话默认附加：
+
+- `hci-troubleshooting`
+
+### 规则 B：案例总结类
+
+触发条件示例：
+
+- 用户说“生成案例摘要”“整理为案例”“保存本次案例”
+- 当前流程已进入 case record/save 阶段
+- 当前对话明显进入收尾与归档阶段
+
+附加：
+
+- `hci-case-summary`
+
+### 规则 C：巡检分析类
+
+触发条件示例：
+
+- 入口是 `inspection run`
+- 消息来源为 `system_event: inspection:run`
+- 当前上下文包含巡检扫描结果或报告草稿
+- 用户请求“分析巡检结果”“生成巡检报告”
+
+附加：
+
+- `hci-inspection-analysis`
+
+### 规则 D：存储 / 网络 / 节点健康专项
+
+触发条件示例：
+
+- 用户消息命中存储、网络、节点健康专项关键词
+- 巡检标签或 target 明确标识专项领域
+- 当前异常表现明显属于专项问题
+
+附加：
+
+- `hci-storage-network-sop`
+
+### 规则 E：多 Skill 叠加限制
+
+允许组合，但建议控制在 2 到 3 个以内：
+
+- `hci-troubleshooting`
+- 加 1 个场景 Skill
+- 特殊情况下再加第 2 个场景 Skill
+
+不建议无限叠加，避免 Prompt 膨胀和职责混乱。
+
+---
+
+## 6.3 实现边界建议
+
+建议职责划分如下：
+
+- `ContextBuilder`
+  只负责接收“始终加载的 Skill”和“本轮路由出的 Skill”，并注入 prompt
+
+- `SkillRoutingPolicy`
+  负责根据当前任务选择 Skill，不负责具体注入
+
+- `AgentLoop`
+  只负责在构建上下文前调用 policy，不直接编码场景细节
+
+这种做法与当前已经引入的 `CaseRecordPolicy`、`InspectionPolicy` 方向一致，更利于测试和扩展。
 
 ---
 
@@ -353,6 +511,8 @@ Skill 文档落地后，至少满足以下标准：
 2. 巡检报告结构不再漂移
 3. 案例总结不再依赖主循环中的硬编码策略
 4. 新增客户化场景优先通过 Skill 扩展，而不是继续改 `AgentLoop`
+5. 系统能根据任务类型稳定附加正确的场景 Skill
+6. `always` Skill 数量保持精简，不因新场景持续膨胀
 
 ---
 

@@ -83,11 +83,11 @@ flowchart LR
 
 这个分支里与 HCI 直接相关的核心模块：
 
-- 诊断工具：[diagnostics.py](/Users/ruibinhuang/repos/nanobot/nanobot/agent/tools/diagnostics.py)
-- 案例系统：[store.py](/Users/ruibinhuang/repos/nanobot/nanobot/cases/store.py)
-- 巡检服务：[service.py](/Users/ruibinhuang/repos/nanobot/nanobot/inspection/service.py)
-- 命令安全与审计：[command_guard.py](/Users/ruibinhuang/repos/nanobot/nanobot/security/command_guard.py)、[audit.py](/Users/ruibinhuang/repos/nanobot/nanobot/security/audit.py)
-- Mattermost 渠道：[mattermost.py](/Users/ruibinhuang/repos/nanobot/nanobot/channels/mattermost.py)
+- 诊断工具：[diagnostics.py](nanobot/agent/tools/diagnostics.py)
+- 案例系统：[store.py](nanobot/cases/store.py)
+- 巡检服务：[service.py](nanobot/inspection/service.py)
+- 命令安全与审计：[command_guard.py](nanobot/security/command_guard.py)、[audit.py](nanobot/security/audit.py)
+- Mattermost 渠道：[mattermost.py](nanobot/channels/mattermost.py)
 
 ## 部署形态
 
@@ -229,7 +229,7 @@ nohup python3 -m nanobot.cli.commands gateway > tmp/hciguard_gateway.log 2>&1 &
 
 参考文件：
 
-- [hci-minimal-config.json](/Users/ruibinhuang/repos/nanobot/examples/hci-minimal-config.json)
+- [hci-minimal-config.json](examples/hci-minimal-config.json)
 
 ## 典型使用流程
 
@@ -322,7 +322,7 @@ nanobot approvals revoke --command "systemctl restart kubelet"
 
 示例案例：
 
-- [sample-storage-timeout.md](/Users/ruibinhuang/repos/nanobot/examples/cases/sample-storage-timeout.md)
+- [sample-storage-timeout.md](examples/cases/sample-storage-timeout.md)
 
 ## 当前不做什么
 
@@ -367,16 +367,16 @@ python3 -m pytest -q \
 
 联调与验收资料：
 
-- [hci-live-validation-checklist-v1.md](/Users/ruibinhuang/repos/nanobot/docs/hci-live-validation-checklist-v1.md)
-- [run_hci_acceptance.sh](/Users/ruibinhuang/repos/nanobot/scripts/run_hci_acceptance.sh)
+- [hci-live-validation-checklist-v1.md](docs/hci-live-validation-checklist-v1.md)
+- [run_hci_acceptance.sh](scripts/run_hci_acceptance.sh)
 
 ## 相关文档
 
-- [HCIGuard 功能文档](/Users/ruibinhuang/repos/nanobot/docs/hci-feature-guide-v1.md)
-- [技术设计](/Users/ruibinhuang/repos/nanobot/docs/technical-design-hci-troubleshooting-assistant-v1.md)
-- [开发状态](/Users/ruibinhuang/repos/nanobot/docs/development-status-v1.md)
-- [Skill 规范](/Users/ruibinhuang/repos/nanobot/docs/skill-spec-v1.md)
-- [仓库瘦身方案](/Users/ruibinhuang/repos/nanobot/docs/repository-slimming-plan-v1.md)
+- [HCIGuard 功能文档](docs/hci-feature-guide-v1.md)
+- [技术设计](docs/technical-design-hci-troubleshooting-assistant-v1.md)
+- [开发状态](docs/development-status-v1.md)
+- [Skill 规范](docs/skill-spec-v1.md)
+- [仓库瘦身方案](docs/repository-slimming-plan-v1.md)
 
 ## 说明
 

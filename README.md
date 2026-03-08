@@ -90,11 +90,11 @@ flowchart LR
 
 Core HCI additions in this fork:
 
-- Diagnostics tools: [diagnostics.py](/Users/ruibinhuang/repos/nanobot/nanobot/agent/tools/diagnostics.py)
-- Case system: [store.py](/Users/ruibinhuang/repos/nanobot/nanobot/cases/store.py)
-- Inspection service: [service.py](/Users/ruibinhuang/repos/nanobot/nanobot/inspection/service.py)
-- Command safety and audit: [command_guard.py](/Users/ruibinhuang/repos/nanobot/nanobot/security/command_guard.py), [audit.py](/Users/ruibinhuang/repos/nanobot/nanobot/security/audit.py)
-- Mattermost channel: [mattermost.py](/Users/ruibinhuang/repos/nanobot/nanobot/channels/mattermost.py)
+- Diagnostics tools: [diagnostics.py](nanobot/agent/tools/diagnostics.py)
+- Case system: [store.py](nanobot/cases/store.py)
+- Inspection service: [service.py](nanobot/inspection/service.py)
+- Command safety and audit: [command_guard.py](nanobot/security/command_guard.py), [audit.py](nanobot/security/audit.py)
+- Mattermost channel: [mattermost.py](nanobot/channels/mattermost.py)
 
 ## Deployment Modes
 
@@ -236,7 +236,7 @@ Example:
 }
 ```
 
-A reference file is also available at [hci-minimal-config.json](/Users/ruibinhuang/repos/nanobot/examples/hci-minimal-config.json).
+A reference file is also available at [hci-minimal-config.json](examples/hci-minimal-config.json).
 
 ## Typical Workflow
 
@@ -331,7 +331,7 @@ Main runtime paths:
 
 Example case file:
 
-- [sample-storage-timeout.md](/Users/ruibinhuang/repos/nanobot/examples/cases/sample-storage-timeout.md)
+- [sample-storage-timeout.md](examples/cases/sample-storage-timeout.md)
 
 ## What This Repository Does Not Do
 
@@ -378,16 +378,16 @@ python3 -m pytest -q \
 
 Live validation assets:
 
-- [hci-live-validation-checklist-v1.md](/Users/ruibinhuang/repos/nanobot/docs/hci-live-validation-checklist-v1.md)
-- [run_hci_acceptance.sh](/Users/ruibinhuang/repos/nanobot/scripts/run_hci_acceptance.sh)
+- [hci-live-validation-checklist-v1.md](docs/hci-live-validation-checklist-v1.md)
+- [run_hci_acceptance.sh](scripts/run_hci_acceptance.sh)
 
 ## Documentation
 
-- [HCIGuard feature guide](/Users/ruibinhuang/repos/nanobot/docs/hci-feature-guide-v1.md)
-- [Technical design](/Users/ruibinhuang/repos/nanobot/docs/technical-design-hci-troubleshooting-assistant-v1.md)
-- [Development status](/Users/ruibinhuang/repos/nanobot/docs/development-status-v1.md)
-- [Skill spec](/Users/ruibinhuang/repos/nanobot/docs/skill-spec-v1.md)
-- [Repository slimming plan](/Users/ruibinhuang/repos/nanobot/docs/repository-slimming-plan-v1.md)
+- [HCIGuard feature guide](docs/hci-feature-guide-v1.md)
+- [Technical design](docs/technical-design-hci-troubleshooting-assistant-v1.md)
+- [Development status](docs/development-status-v1.md)
+- [Skill spec](docs/skill-spec-v1.md)
+- [Repository slimming plan](docs/repository-slimming-plan-v1.md)
 
 ## Notes
 
