@@ -45,6 +45,12 @@ chmod 600 ~/.nanobot/config.json
       "enabled": true,
       "token": "YOUR_BOT_TOKEN",
       "allowFrom": ["123456789", "987654321"]
+    },
+    "mattermost": {
+      "enabled": true,
+      "baseUrl": "https://mm.example.com",
+      "token": "YOUR_BOT_TOKEN",
+      "allowFrom": ["YOUR_USER_ID"]
     }
   }
 }
@@ -53,6 +59,7 @@ chmod 600 ~/.nanobot/config.json
 **Security Notes:**
 - In `v0.1.4.post3` and earlier, an empty `allowFrom` allows all users. In newer versions (including source builds), **empty `allowFrom` denies all access** — set `["*"]` to explicitly allow everyone.
 - Get your Telegram user ID from `@userinfobot`
+- For Mattermost, prefer a dedicated bot account and restrict `allowFrom` to operator user IDs
 - Review access logs regularly for unauthorized access attempts
 
 ### 3. Shell Command Execution

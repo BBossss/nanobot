@@ -13,7 +13,7 @@ class BaseChannel(ABC):
     """
     Abstract base class for chat channel implementations.
 
-    Each channel (Telegram, Discord, etc.) should implement this interface
+    Each channel (Telegram, Mattermost, etc.) should implement this interface
     to integrate with the nanobot message bus.
     """
 
