@@ -1,9 +1,7 @@
-<svg width="960" height="240" viewBox="0 0 960 240" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="960" height="240" rx="24" fill="#F4F7F2"/>
-  <rect x="36" y="36" width="168" height="168" rx="32" fill="#17312B"/>
-  <path d="M120 62L168 84V126C168 161.2 147.6 191.4 120 204C92.4 191.4 72 161.2 72 126V84L120 62Z" fill="#D8E979"/>
-  <path d="M120 91L146 103V126C146 146.7 135 165.5 120 173C105 165.5 94 146.7 94 126V103L120 91Z" fill="#17312B"/>
-  <path d="M110 126L117 133L132 117" stroke="#D8E979" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
-  <text x="244" y="108" fill="#17312B" font-family="Arial, Helvetica, sans-serif" font-size="56" font-weight="700">HCIGuard</text>
-  <text x="246" y="152" fill="#46635B" font-family="Arial, Helvetica, sans-serif" font-size="24">HCI Troubleshooting Assistant</text>
+<svg width="240" height="240" viewBox="0 0 240 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="240" height="240" rx="40" fill="#F4F7F2"/>
+  <rect x="34" y="34" width="172" height="172" rx="36" fill="#17312B"/>
+  <path d="M120 58L171 81V126C171 164.2 148.9 196.9 120 210C91.1 196.9 69 164.2 69 126V81L120 58Z" fill="#D8E979"/>
+  <path d="M120 89L149 102V126C149 149.1 136.7 170.2 120 178C103.3 170.2 91 149.1 91 126V102L120 89Z" fill="#17312B"/>
+  <path d="M108 126L116 134L134 115" stroke="#D8E979" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
