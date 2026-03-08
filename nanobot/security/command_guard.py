@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 from pathlib import Path
 
 
@@ -62,6 +63,73 @@ def is_command_allowed(
     return command in load_manual_approvals(approval_file)
 
 
+_SSH_OPTIONS_WITH_VALUE = {
+    "-b",
+    "-c",
+    "-D",
+    "-E",
+    "-e",
+    "-F",
+    "-i",
+    "-J",
+    "-L",
+    "-l",
+    "-m",
+    "-o",
+    "-p",
+    "-Q",
+    "-R",
+    "-S",
+    "-W",
+    "-w",
+}
+
+
+def normalize_ssh_host(destination: str) -> str:
+    """Normalize ssh destination to bare host for allowlist checks."""
+    host = destination.rsplit("@", 1)[-1]
+    if host.startswith("[") and host.endswith("]"):
+        host = host[1:-1]
+    return host.strip().lower()
+
+
+def parse_ssh_command(command: str) -> tuple[str, str] | None:
+    """Parse a simple ssh command into (destination, remote_command)."""
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return None
+
+    if not parts or parts[0].lower() != "ssh":
+        return None
+
+    idx = 1
+    destination = ""
+    while idx < len(parts):
+        token = parts[idx]
+        if token == "--":
+            idx += 1
+            continue
+        if token.startswith("-"):
+            short = token[:2]
+            if token in _SSH_OPTIONS_WITH_VALUE:
+                idx += 2
+                continue
+            if short in _SSH_OPTIONS_WITH_VALUE and len(token) > 2:
+                idx += 1
+                continue
+            idx += 1
+            continue
+        destination = token
+        idx += 1
+        break
+
+    remote_tokens = parts[idx:]
+    if not destination or not remote_tokens:
+        return None
+    return destination, shlex.join(remote_tokens)
+
+
 def guard_command(
     command: str,
     *,
@@ -72,6 +140,8 @@ def guard_command(
     readonly_mode: bool = False,
     allowed_commands: set[str] | None = None,
     approval_file: Path | None = None,
+    allow_ssh_bridge: bool = False,
+    allowed_ssh_hosts: set[str] | None = None,
 ) -> str | None:
     """Apply shared command safety rules. Returns an error string when blocked."""
     cmd = command.strip()
@@ -84,6 +154,30 @@ def guard_command(
     if allow_patterns:
         if not any(re.search(p, lower) for p in allow_patterns):
             return "Error: Command blocked by safety guard (not in allowlist)"
+
+    if readonly_mode and extract_base_command(cmd) == "ssh" and allow_ssh_bridge:
+        if cmd in load_manual_approvals(approval_file):
+            return None
+        parsed = parse_ssh_command(cmd)
+        if not parsed:
+            return "Error: SSH bridge requires a destination and a remote command"
+        destination, remote_command = parsed
+        remote_host = normalize_ssh_host(destination)
+        if allowed_ssh_hosts and remote_host not in {h.strip().lower() for h in allowed_ssh_hosts if h.strip()}:
+            return f"Error: SSH target '{remote_host}' is not in the approved host list"
+        remote_allowed = {c for c in (allowed_commands or set()) if c != "ssh"}
+        return guard_command(
+            remote_command,
+            cwd=cwd,
+            deny_patterns=deny_patterns,
+            allow_patterns=None,
+            restrict_to_workspace=False,
+            readonly_mode=True,
+            allowed_commands=remote_allowed,
+            approval_file=approval_file,
+            allow_ssh_bridge=False,
+            allowed_ssh_hosts=None,
+        )
 
     if readonly_mode and not is_command_allowed(
         cmd,

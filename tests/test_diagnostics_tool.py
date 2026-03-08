@@ -71,3 +71,71 @@ async def test_diagnose_system_status_rejects_unknown_scope(tmp_path: Path) -> N
     result = await tool.execute(scope="unknown")
 
     assert "Unsupported scope" in result
+
+
+@pytest.mark.asyncio
+async def test_diagnose_log_read_remote_uses_ssh_bridge(tmp_path: Path) -> None:
+    tool = DiagnoseLogReadTool(
+        workspace=tmp_path,
+        allowed_paths=["/sf/log/today"],
+        allow_remote_ssh=True,
+        allowed_ssh_hosts=["10.10.10.8"],
+    )
+
+    async def fake_run_cmd(args: list[str], **kwargs: object) -> str:
+        assert args == ["tail", "-n", "2", "/sf/log/today/update.log"]
+        assert kwargs["target_host"] == "10.10.10.8"
+        assert kwargs["target_user"] == "root"
+        return "line 1\nline 2"
+
+    tool._run_cmd = fake_run_cmd  # type: ignore[method-assign]
+    result = await tool.execute(
+        path="/sf/log/today/update.log",
+        lines=2,
+        mode="tail",
+        target_host="10.10.10.8",
+        target_user="root",
+    )
+
+    assert "10.10.10.8" in result
+    assert "line 1" in result
+
+
+@pytest.mark.asyncio
+async def test_diagnose_log_search_remote_blocks_unapproved_host(tmp_path: Path) -> None:
+    tool = DiagnoseLogSearchTool(
+        workspace=tmp_path,
+        allowed_paths=["/sf/log/today"],
+        allow_remote_ssh=True,
+        allowed_ssh_hosts=["10.10.10.8"],
+    )
+
+    result = await tool.execute(
+        path="/sf/log/today/update.log",
+        pattern="error",
+        target_host="10.10.10.9",
+    )
+
+    assert "approved host list" in result
+
+
+@pytest.mark.asyncio
+async def test_diagnose_system_status_remote_uses_ssh_bridge(tmp_path: Path) -> None:
+    tool = DiagnoseSystemStatusTool(
+        workspace=tmp_path,
+        allow_remote_ssh=True,
+        allowed_ssh_hosts=["10.10.10.8"],
+    )
+
+    calls: list[tuple[list[str], dict[str, object]]] = []
+
+    async def fake_run_cmd(args: list[str], **kwargs: object) -> str:
+        calls.append((args, kwargs))
+        return "ok"
+
+    tool._run_cmd = fake_run_cmd  # type: ignore[method-assign]
+    result = await tool.execute(scope="general", target_host="10.10.10.8", target_user="root")
+
+    assert "remote: 10.10.10.8" in result
+    assert len(calls) == 2
+    assert calls[0][1]["target_host"] == "10.10.10.8"

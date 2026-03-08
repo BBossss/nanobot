@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import re
-from pathlib import Path
+import shlex
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 from nanobot.agent.tools.base import Tool
@@ -22,12 +23,16 @@ class _DiagnosticsBaseTool(Tool):
         max_read_lines: int = 2000,
         max_search_hits: int = 100,
         allowed_paths: list[str] | None = None,
+        allow_remote_ssh: bool = False,
+        allowed_ssh_hosts: list[str] | None = None,
     ):
         self.workspace = Path(workspace).expanduser() if workspace else Path.cwd()
         self.timeout = timeout
         self.max_read_lines = max_read_lines
         self.max_search_hits = max_search_hits
         self.allowed_paths = [Path(p).expanduser().resolve() for p in (allowed_paths or ["/var/log", "/opt/logs"])]
+        self.allow_remote_ssh = allow_remote_ssh
+        self.allowed_ssh_hosts = {h.strip().lower() for h in (allowed_ssh_hosts or []) if h.strip()}
         self.audit = CommandAuditLogger(self.workspace)
 
     def _record_audit(
@@ -69,7 +74,44 @@ class _DiagnosticsBaseTool(Tool):
             return None, f"Error: Not a file: {path}"
         return file_path, None
 
-    async def _run_cmd(self, args: list[str]) -> str:
+    def _validate_remote_target(self, target_host: str | None) -> str | None:
+        if not target_host:
+            return None
+        host = target_host.strip().lower()
+        if not self.allow_remote_ssh:
+            return "Error: Remote SSH diagnostics are disabled"
+        if self.allowed_ssh_hosts and host not in self.allowed_ssh_hosts:
+            return f"Error: SSH target '{target_host}' is not in the approved host list"
+        return None
+
+    def _validate_remote_path(self, path: str) -> tuple[str | None, str | None]:
+        try:
+            file_path = PurePosixPath(path)
+        except Exception as exc:
+            return None, f"Error: Invalid remote path '{path}': {exc}"
+        if not file_path.is_absolute():
+            return None, f"Error: Remote path must be absolute: {path}"
+        normalized = file_path.as_posix()
+        allowed = [PurePosixPath(str(p)).as_posix() for p in self.allowed_paths]
+        if not any(normalized == base or normalized.startswith(base.rstrip("/") + "/") for base in allowed):
+            return None, f"Error: Path '{path}' is outside allowed paths ({', '.join(allowed)})"
+        return normalized, None
+
+    async def _run_cmd(
+        self,
+        args: list[str],
+        *,
+        target_host: str | None = None,
+        target_user: str | None = None,
+        target_port: int | None = None,
+    ) -> str:
+        if target_host:
+            return await self._run_remote_cmd(
+                args,
+                target_host=target_host,
+                target_user=target_user,
+                target_port=target_port,
+            )
         try:
             process = await asyncio.create_subprocess_exec(
                 *args,
@@ -93,6 +135,31 @@ class _DiagnosticsBaseTool(Tool):
         except Exception as exc:
             return f"Error executing command {' '.join(args)}: {exc}"
 
+    async def _run_remote_cmd(
+        self,
+        args: list[str],
+        *,
+        target_host: str,
+        target_user: str | None = None,
+        target_port: int | None = None,
+    ) -> str:
+        err = self._validate_remote_target(target_host)
+        if err:
+            return err
+
+        destination = f"{target_user}@{target_host}" if target_user else target_host
+        ssh_args = [
+            "ssh",
+            "-o",
+            "BatchMode=yes",
+            "-o",
+            "StrictHostKeyChecking=accept-new",
+        ]
+        if target_port:
+            ssh_args += ["-p", str(target_port)]
+        ssh_args += [destination, shlex.join(args)]
+        return await self._run_cmd(ssh_args)
+
 
 class DiagnoseLogReadTool(_DiagnosticsBaseTool):
     """Read log snippets from allowed paths."""
@@ -113,11 +180,57 @@ class DiagnoseLogReadTool(_DiagnosticsBaseTool):
                 "path": {"type": "string", "description": "Absolute path to the log file"},
                 "lines": {"type": "integer", "minimum": 1, "maximum": 2000},
                 "mode": {"type": "string", "enum": ["tail", "head"]},
+                "target_host": {"type": "string", "description": "Optional SSH target host"},
+                "target_user": {"type": "string", "description": "Optional SSH username"},
+                "target_port": {"type": "integer", "minimum": 1, "maximum": 65535},
             },
             "required": ["path"],
         }
 
-    async def execute(self, path: str, lines: int = 200, mode: str = "tail", **kwargs: Any) -> str:
+    async def execute(
+        self,
+        path: str,
+        lines: int = 200,
+        mode: str = "tail",
+        target_host: str | None = None,
+        target_user: str | None = None,
+        target_port: int | None = None,
+        **kwargs: Any,
+    ) -> str:
+        if target_host:
+            remote_path, err = self._validate_remote_path(path)
+            if err:
+                self._record_audit(
+                    source=self.name,
+                    detail=err,
+                    metadata={"path": path, "mode": mode, "lines": lines, "target_host": target_host},
+                    status="blocked",
+                )
+                return err
+            line_count = max(1, min(lines, self.max_read_lines))
+            cmd = ["tail" if mode == "tail" else "head", "-n", str(line_count), remote_path]
+            output = await self._run_cmd(
+                cmd,
+                target_host=target_host,
+                target_user=target_user,
+                target_port=target_port,
+            )
+            result = f"{mode} {line_count} lines from {remote_path} on {target_host}:\n{output}"
+            self._record_audit(
+                source=self.name,
+                detail=result,
+                metadata={
+                    "path": remote_path,
+                    "mode": mode,
+                    "lines": line_count,
+                    "target_host": target_host,
+                    "target_user": target_user or "",
+                    "remote": True,
+                },
+                status="error" if output.startswith("Error:") else "ok",
+            )
+            return result
+
         file_path, err = self._validate_path(path)
         if err:
             self._record_audit(
@@ -161,6 +274,9 @@ class DiagnoseLogSearchTool(_DiagnosticsBaseTool):
                 "pattern": {"type": "string", "minLength": 1, "description": "Regex pattern to search"},
                 "max_hits": {"type": "integer", "minimum": 1, "maximum": 100},
                 "ignore_case": {"type": "boolean"},
+                "target_host": {"type": "string", "description": "Optional SSH target host"},
+                "target_user": {"type": "string", "description": "Optional SSH username"},
+                "target_port": {"type": "integer", "minimum": 1, "maximum": 65535},
             },
             "required": ["path", "pattern"],
         }
@@ -171,8 +287,53 @@ class DiagnoseLogSearchTool(_DiagnosticsBaseTool):
         pattern: str,
         max_hits: int = 50,
         ignore_case: bool = True,
+        target_host: str | None = None,
+        target_user: str | None = None,
+        target_port: int | None = None,
         **kwargs: Any,
     ) -> str:
+        limit = max(1, min(max_hits, self.max_search_hits))
+        if target_host:
+            remote_path, err = self._validate_remote_path(path)
+            if err:
+                self._record_audit(
+                    source=self.name,
+                    detail=err,
+                    metadata={"path": path, "pattern": pattern, "max_hits": max_hits, "target_host": target_host},
+                    status="blocked",
+                )
+                return err
+            cmd = ["grep", "-n", "-E", "-m", str(limit)]
+            if ignore_case:
+                cmd.append("-i")
+            cmd += [pattern, remote_path]
+            output = await self._run_cmd(
+                cmd,
+                target_host=target_host,
+                target_user=target_user,
+                target_port=target_port,
+            )
+            if output.startswith("Error: Command failed (1):"):
+                output = ""
+            if not output.strip():
+                result = f"No matches for pattern '{pattern}' in {remote_path} on {target_host}"
+            else:
+                result = f"Found match(es) in {remote_path} on {target_host}:\n{output}"
+            self._record_audit(
+                source=self.name,
+                detail=result,
+                metadata={
+                    "path": remote_path,
+                    "pattern": pattern,
+                    "max_hits": limit,
+                    "target_host": target_host,
+                    "target_user": target_user or "",
+                    "remote": True,
+                },
+                status="error" if output.startswith("Error:") else "ok",
+            )
+            return result
+
         file_path, err = self._validate_path(path)
         if err:
             self._record_audit(
@@ -196,7 +357,6 @@ class DiagnoseLogSearchTool(_DiagnosticsBaseTool):
             )
             return err
 
-        limit = max(1, min(max_hits, self.max_search_hits))
         matches: list[str] = []
         for line_no, line in enumerate(file_path.read_text(encoding="utf-8", errors="replace").splitlines(), start=1):
             if regex.search(line):
@@ -248,12 +408,22 @@ class DiagnoseSystemStatusTool(_DiagnosticsBaseTool):
                 "scope": {
                     "type": "string",
                     "enum": ["general", "memory", "process", "network", "disk"],
-                }
+                },
+                "target_host": {"type": "string", "description": "Optional SSH target host"},
+                "target_user": {"type": "string", "description": "Optional SSH username"},
+                "target_port": {"type": "integer", "minimum": 1, "maximum": 65535},
             },
             "required": ["scope"],
         }
 
-    async def execute(self, scope: str, **kwargs: Any) -> str:
+    async def execute(
+        self,
+        scope: str,
+        target_host: str | None = None,
+        target_user: str | None = None,
+        target_port: int | None = None,
+        **kwargs: Any,
+    ) -> str:
         commands = self._SCOPE_COMMANDS.get(scope)
         if not commands:
             err = f"Error: Unsupported scope '{scope}'"
@@ -265,14 +435,39 @@ class DiagnoseSystemStatusTool(_DiagnosticsBaseTool):
             )
             return err
 
-        sections: list[str] = [f"System status scope: {scope}"]
+        header = f"System status scope: {scope}"
+        if target_host:
+            err = self._validate_remote_target(target_host)
+            if err:
+                self._record_audit(
+                    source=self.name,
+                    detail=err,
+                    metadata={"scope": scope, "target_host": target_host},
+                    status="blocked",
+                )
+                return err
+            header += f" (remote: {target_host})"
+
+        sections: list[str] = [header]
         for cmd in commands:
-            output = await self._run_cmd(cmd)
+            output = await self._run_cmd(
+                cmd,
+                target_host=target_host,
+                target_user=target_user,
+                target_port=target_port,
+            )
             sections.append(f"$ {' '.join(cmd)}\n{output}")
         result = "\n\n".join(sections)
         self._record_audit(
             source=self.name,
             detail=result,
-            metadata={"scope": scope, "command": ", ".join(" ".join(cmd) for cmd in commands)},
+            metadata={
+                "scope": scope,
+                "command": ", ".join(" ".join(cmd) for cmd in commands),
+                "target_host": target_host or "",
+                "target_user": target_user or "",
+                "remote": bool(target_host),
+            },
+            status="error" if "\nError:" in result else "ok",
         )
         return result

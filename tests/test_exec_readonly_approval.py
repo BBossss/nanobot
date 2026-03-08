@@ -45,6 +45,44 @@ def test_exec_readonly_allows_manually_approved_exact_command(tmp_path: Path) ->
     assert err is None
 
 
+def test_exec_readonly_allows_ssh_bridge_for_allowlisted_remote_command(tmp_path: Path) -> None:
+    tool = ExecTool(
+        readonly_mode=True,
+        allowed_commands=["cat", "tail", "grep", "systemctl"],
+        approval_file=str(tmp_path / "approvals.json"),
+        allow_ssh_bridge=True,
+        allowed_ssh_hosts=["10.10.10.8"],
+    )
+    err = tool._guard_command("ssh root@10.10.10.8 systemctl status upgrade-worker", str(tmp_path))
+    assert err is None
+
+
+def test_exec_readonly_blocks_ssh_bridge_for_non_allowlisted_host(tmp_path: Path) -> None:
+    tool = ExecTool(
+        readonly_mode=True,
+        allowed_commands=["cat", "tail", "grep", "systemctl"],
+        approval_file=str(tmp_path / "approvals.json"),
+        allow_ssh_bridge=True,
+        allowed_ssh_hosts=["10.10.10.8"],
+    )
+    err = tool._guard_command("ssh root@10.10.10.9 systemctl status upgrade-worker", str(tmp_path))
+    assert err is not None
+    assert "approved host list" in err
+
+
+def test_exec_readonly_blocks_ssh_bridge_for_disallowed_remote_command(tmp_path: Path) -> None:
+    tool = ExecTool(
+        readonly_mode=True,
+        allowed_commands=["cat", "tail", "grep"],
+        approval_file=str(tmp_path / "approvals.json"),
+        allow_ssh_bridge=True,
+        allowed_ssh_hosts=["10.10.10.8"],
+    )
+    err = tool._guard_command("ssh root@10.10.10.8 systemctl restart kubelet", str(tmp_path))
+    assert err is not None
+    assert "manual approval" in err
+
+
 async def _run_exec(tool: ExecTool, command: str, cwd: Path) -> str:
     return await tool.execute(command=command, working_dir=str(cwd))
 
