@@ -32,6 +32,7 @@ from nanobot.agent.tools.web import WebFetchTool, WebSearchTool
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.cases.store import CaseStore
+from nanobot.policies.cases import CaseRecordPolicy
 from nanobot.providers.base import LLMProvider
 from nanobot.session.manager import Session, SessionManager
 
@@ -512,60 +513,34 @@ class AgentLoop:
         cmd = msg.content.strip().lower()
         if cmd.startswith("/"):
             return
-        summary = msg.content[:3000]
-        conclusion = final_content[:3000]
-        title = summary.splitlines()[0].strip() if summary.strip() else "Troubleshooting case"
-        title = title[:120]
-        tags = [msg.channel] if msg.channel else ["troubleshooting"]
-        item = self._case_store.write_case(
-            title=title or "Troubleshooting case",
-            trigger=msg.channel,
-            source="generated",
-            summary=summary,
-            evidence="Collected from request/response flow",
-            conclusion=conclusion,
-            suggestion="Review results and continue with next checks if needed",
-            status="open",
-            tags=tags,
+        draft = CaseRecordPolicy.build_generated_case(
+            channel=msg.channel,
+            content=msg.content,
+            final_content=final_content,
         )
-
-        entry = (
-            f"[{item['created_at'][:16]}] CASE {item['id']} | "
-            f"channel={msg.channel} | title={item['title']} | "
-            f"conclusion={conclusion[:160]}"
+        item = self._case_store.write_case(
+            title=draft.title,
+            trigger=draft.trigger,
+            source=draft.source,
+            summary=draft.summary,
+            evidence=draft.evidence,
+            conclusion=draft.conclusion,
+            suggestion=draft.suggestion,
+            status=draft.status,
+            tags=draft.tags,
+        )
+        entry = CaseRecordPolicy.build_history_entry(
+            created_at=item["created_at"],
+            case_id=item["id"],
+            channel=msg.channel,
+            title=item["title"],
+            conclusion=draft.conclusion,
         )
         MemoryStore(self.workspace).append_history(entry)
 
     @staticmethod
     def _should_record_case(content: str, mode: str) -> bool:
-        if mode == "manual":
-            return False
-        if mode == "every_turn":
-            return True
-        text = (content or "").strip()
-        if not text:
-            return False
-        lower = text.lower()
-
-        # Don't create new case records for question-style messages.
-        if "?" in text or "？" in text or lower.endswith("吗"):
-            return False
-
-        end_markers = (
-            "结束",
-            "查完了",
-            "完成排查",
-            "排查完成",
-            "故障已恢复",
-            "归档",
-            "生成案例摘要",
-            "保存案例",
-            "保存摘要",
-            "总结并保存",
-            "done",
-            "wrap up",
-        )
-        return any(mark in lower for mark in end_markers)
+        return CaseRecordPolicy.should_record(content, mode)
 
     def _save_turn(self, session: Session, messages: list[dict], skip: int) -> None:
         """Save new-turn messages into session, truncating large tool results."""
