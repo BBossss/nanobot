@@ -42,6 +42,18 @@ Main runtime flow:
 
 `CLI / Telegram / Mattermost -> MessageBus -> AgentLoop -> Tools / LLM -> Response`
 
+```mermaid
+flowchart LR
+    A["CLI / Telegram / Mattermost"] --> B["MessageBus"]
+    B --> C["AgentLoop"]
+    C --> D["Diagnostics / Cases / Inspection / Plan / Exec"]
+    C --> E["LLM Provider"]
+    D --> F["Cases Store / Reports / Audit"]
+    E --> C
+    F --> C
+    C --> G["Reply / Case / Report / Approval Prompt"]
+```
+
 Core HCI additions in this fork:
 
 - Diagnostics tools: [diagnostics.py](/Users/ruibinhuang/repos/nanobot/nanobot/agent/tools/diagnostics.py)
@@ -49,6 +61,19 @@ Core HCI additions in this fork:
 - Inspection service: [service.py](/Users/ruibinhuang/repos/nanobot/nanobot/inspection/service.py)
 - Command safety and audit: [command_guard.py](/Users/ruibinhuang/repos/nanobot/nanobot/security/command_guard.py), [audit.py](/Users/ruibinhuang/repos/nanobot/nanobot/security/audit.py)
 - Mattermost channel: [mattermost.py](/Users/ruibinhuang/repos/nanobot/nanobot/channels/mattermost.py)
+
+## Deployment Modes
+
+Current recommended deployment modes:
+
+- Local debugging:
+  run `nanobot agent` on a workstation or admin jump host
+- IM service mode:
+  run `nanobot gateway` in the background and receive requests from Telegram or Mattermost
+- HCI inspection node:
+  deploy on a node with controlled readonly access to target logs and system commands
+
+Current implementation is strongest for single-host or single-node diagnostics. Cross-host orchestration is still a next-stage capability, not a finished V1 feature.
 
 ## Install
 
@@ -96,6 +121,12 @@ Start gateway mode:
 
 ```bash
 nanobot gateway
+```
+
+Run in background:
+
+```bash
+nohup python3 -m nanobot.cli.commands gateway > tmp/hciguard_gateway.log 2>&1 &
 ```
 
 ## Minimal HCI Configuration
@@ -190,6 +221,16 @@ nanobot approvals list
 nanobot approvals grant --command "systemctl restart kubelet"
 nanobot approvals revoke --command "systemctl restart kubelet"
 ```
+
+## What This Repository Does Not Do
+
+Current non-goals or incomplete areas:
+
+- It is not a generic multi-channel personal assistant anymore
+- It does not provide unrestricted shell execution by default
+- It does not yet implement full cross-host troubleshooting orchestration
+- It does not ship a production web UI in this repository
+- It does not replace external CMDB, monitoring, or ticket systems; those are future integration targets
 
 ## Testing
 
