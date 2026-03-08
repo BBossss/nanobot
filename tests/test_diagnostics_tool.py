@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -25,12 +26,17 @@ async def test_diagnose_log_read_tail_and_head(tmp_path: Path) -> None:
     log_file = tmp_path / "app.log"
     log_file.write_text("1\n2\n3\n4\n", encoding="utf-8")
 
-    tool = DiagnoseLogReadTool(allowed_paths=[str(tmp_path)], max_read_lines=10)
+    tool = DiagnoseLogReadTool(workspace=tmp_path, allowed_paths=[str(tmp_path)], max_read_lines=10)
     tail = await tool.execute(path=str(log_file), lines=2, mode="tail")
     head = await tool.execute(path=str(log_file), lines=2, mode="head")
 
     assert "3" in tail and "4" in tail
     assert "1" in head and "2" in head
+
+    audit_file = tmp_path / "audit" / "commands.jsonl"
+    assert audit_file.exists()
+    payload = json.loads(audit_file.read_text(encoding="utf-8").splitlines()[-1])
+    assert payload["source"] == "diagnose_log_read"
 
 
 @pytest.mark.asyncio
@@ -38,7 +44,7 @@ async def test_diagnose_log_search_limits_results(tmp_path: Path) -> None:
     log_file = tmp_path / "app.log"
     log_file.write_text("error one\nok\nerror two\nerror three\n", encoding="utf-8")
 
-    tool = DiagnoseLogSearchTool(allowed_paths=[str(tmp_path)], max_search_hits=2)
+    tool = DiagnoseLogSearchTool(workspace=tmp_path, allowed_paths=[str(tmp_path)], max_search_hits=2)
     result = await tool.execute(path=str(log_file), pattern="error", max_hits=10)
 
     assert "Found 2 match(es)" in result
@@ -50,15 +56,18 @@ async def test_diagnose_log_search_invalid_regex(tmp_path: Path) -> None:
     log_file = tmp_path / "app.log"
     log_file.write_text("error one\n", encoding="utf-8")
 
-    tool = DiagnoseLogSearchTool(allowed_paths=[str(tmp_path)])
+    tool = DiagnoseLogSearchTool(workspace=tmp_path, allowed_paths=[str(tmp_path)])
     result = await tool.execute(path=str(log_file), pattern="(")
 
     assert result.startswith("Error: Invalid regex pattern:")
 
+    audit_file = tmp_path / "audit" / "commands.jsonl"
+    assert audit_file.exists()
+
 
 @pytest.mark.asyncio
-async def test_diagnose_system_status_rejects_unknown_scope() -> None:
-    tool = DiagnoseSystemStatusTool()
+async def test_diagnose_system_status_rejects_unknown_scope(tmp_path: Path) -> None:
+    tool = DiagnoseSystemStatusTool(workspace=tmp_path)
     result = await tool.execute(scope="unknown")
 
     assert "Unsupported scope" in result

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from nanobot.agent.tools.base import Tool
+from nanobot.security.audit import CommandAuditLogger
 
 
 class _DiagnosticsBaseTool(Tool):
@@ -16,15 +17,35 @@ class _DiagnosticsBaseTool(Tool):
     def __init__(
         self,
         *,
+        workspace: str | Path | None = None,
         timeout: int = 20,
         max_read_lines: int = 2000,
         max_search_hits: int = 100,
         allowed_paths: list[str] | None = None,
     ):
+        self.workspace = Path(workspace).expanduser() if workspace else Path.cwd()
         self.timeout = timeout
         self.max_read_lines = max_read_lines
         self.max_search_hits = max_search_hits
         self.allowed_paths = [Path(p).expanduser().resolve() for p in (allowed_paths or ["/var/log", "/opt/logs"])]
+        self.audit = CommandAuditLogger(self.workspace)
+
+    def _record_audit(
+        self,
+        *,
+        source: str,
+        detail: str,
+        metadata: dict[str, Any],
+        status: str = "ok",
+    ) -> None:
+        self.audit.record(
+            source=source,
+            command=metadata.get("command", source),
+            status=status,
+            cwd=str(self.workspace),
+            detail=detail,
+            metadata=metadata,
+        )
 
     def _is_path_allowed(self, file_path: Path) -> bool:
         resolved = file_path.expanduser().resolve()
@@ -99,13 +120,25 @@ class DiagnoseLogReadTool(_DiagnosticsBaseTool):
     async def execute(self, path: str, lines: int = 200, mode: str = "tail", **kwargs: Any) -> str:
         file_path, err = self._validate_path(path)
         if err:
+            self._record_audit(
+                source=self.name,
+                detail=err,
+                metadata={"path": path, "mode": mode, "lines": lines},
+                status="blocked",
+            )
             return err
         line_count = max(1, min(lines, self.max_read_lines))
 
         content = file_path.read_text(encoding="utf-8", errors="replace").splitlines()
         selected = content[-line_count:] if mode == "tail" else content[:line_count]
         header = f"{mode} {line_count} lines from {file_path}:"
-        return header + ("\n" + "\n".join(selected) if selected else "\n(no content)")
+        result = header + ("\n" + "\n".join(selected) if selected else "\n(no content)")
+        self._record_audit(
+            source=self.name,
+            detail=result,
+            metadata={"path": str(file_path), "mode": mode, "lines": line_count},
+        )
+        return result
 
 
 class DiagnoseLogSearchTool(_DiagnosticsBaseTool):
@@ -142,13 +175,26 @@ class DiagnoseLogSearchTool(_DiagnosticsBaseTool):
     ) -> str:
         file_path, err = self._validate_path(path)
         if err:
+            self._record_audit(
+                source=self.name,
+                detail=err,
+                metadata={"path": path, "pattern": pattern, "max_hits": max_hits},
+                status="blocked",
+            )
             return err
 
         flags = re.IGNORECASE if ignore_case else 0
         try:
             regex = re.compile(pattern, flags)
         except re.error as exc:
-            return f"Error: Invalid regex pattern: {exc}"
+            err = f"Error: Invalid regex pattern: {exc}"
+            self._record_audit(
+                source=self.name,
+                detail=err,
+                metadata={"path": str(file_path), "pattern": pattern, "max_hits": max_hits},
+                status="error",
+            )
+            return err
 
         limit = max(1, min(max_hits, self.max_search_hits))
         matches: list[str] = []
@@ -159,8 +205,20 @@ class DiagnoseLogSearchTool(_DiagnosticsBaseTool):
                 break
 
         if not matches:
-            return f"No matches for pattern '{pattern}' in {file_path}"
-        return f"Found {len(matches)} match(es) in {file_path}:\n" + "\n".join(matches)
+            result = f"No matches for pattern '{pattern}' in {file_path}"
+            self._record_audit(
+                source=self.name,
+                detail=result,
+                metadata={"path": str(file_path), "pattern": pattern, "max_hits": limit},
+            )
+            return result
+        result = f"Found {len(matches)} match(es) in {file_path}:\n" + "\n".join(matches)
+        self._record_audit(
+            source=self.name,
+            detail=result,
+            metadata={"path": str(file_path), "pattern": pattern, "max_hits": limit},
+        )
+        return result
 
 
 class DiagnoseSystemStatusTool(_DiagnosticsBaseTool):
@@ -198,10 +256,23 @@ class DiagnoseSystemStatusTool(_DiagnosticsBaseTool):
     async def execute(self, scope: str, **kwargs: Any) -> str:
         commands = self._SCOPE_COMMANDS.get(scope)
         if not commands:
-            return f"Error: Unsupported scope '{scope}'"
+            err = f"Error: Unsupported scope '{scope}'"
+            self._record_audit(
+                source=self.name,
+                detail=err,
+                metadata={"scope": scope},
+                status="error",
+            )
+            return err
 
         sections: list[str] = [f"System status scope: {scope}"]
         for cmd in commands:
             output = await self._run_cmd(cmd)
             sections.append(f"$ {' '.join(cmd)}\n{output}")
-        return "\n\n".join(sections)
+        result = "\n\n".join(sections)
+        self._record_audit(
+            source=self.name,
+            detail=result,
+            metadata={"scope": scope, "command": ", ".join(" ".join(cmd) for cmd in commands)},
+        )
+        return result

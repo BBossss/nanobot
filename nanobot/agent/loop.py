@@ -150,18 +150,21 @@ class AgentLoop:
             max_search_hits = diag_cfg.max_search_hits if diag_cfg else 100
             allowed_paths = diag_cfg.allowed_paths if diag_cfg else ["/var/log", "/opt/logs"]
             self.tools.register(DiagnoseLogReadTool(
+                workspace=self.workspace,
                 timeout=timeout,
                 max_read_lines=max_read_lines,
                 max_search_hits=max_search_hits,
                 allowed_paths=allowed_paths,
             ))
             self.tools.register(DiagnoseLogSearchTool(
+                workspace=self.workspace,
                 timeout=timeout,
                 max_read_lines=max_read_lines,
                 max_search_hits=max_search_hits,
                 allowed_paths=allowed_paths,
             ))
             self.tools.register(DiagnoseSystemStatusTool(
+                workspace=self.workspace,
                 timeout=timeout,
                 max_read_lines=max_read_lines,
                 max_search_hits=max_search_hits,
