@@ -1,4 +1,4 @@
-# HCI 排障助手 V1 文档总览
+# HCIGuard V1 文档总览
 
 ## 1. 目的
 
@@ -19,6 +19,7 @@
 
 - [最小配置示例](/Users/ruibinhuang/repos/nanobot/examples/hci-minimal-config.json)
 - [示例案例数据](/Users/ruibinhuang/repos/nanobot/examples/cases/sample-storage-timeout.md)
+- [仓库第一轮精简方案](/Users/ruibinhuang/repos/nanobot/docs/repository-slimming-plan-v1.md)
 
 ### 2.1 产品与方案边界
 

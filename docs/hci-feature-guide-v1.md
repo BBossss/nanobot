@@ -1,4 +1,4 @@
-# HCI 排障助手功能文档（基于 nanobot 改造，V1）
+# HCIGuard 功能文档（基于 nanobot 改造，V1）
 
 ## 1. 文档目标
 

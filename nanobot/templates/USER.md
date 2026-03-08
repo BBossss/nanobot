@@ -31,7 +31,7 @@ Information about the user to help personalize interactions.
 ## Work Context
 
 - **Primary Role**: HCI 排障助手项目负责人 / 运维工程师
-- **Main Projects**: 基于 nanobot 构建 HCI 现场排障助手（案例沉淀、巡检、IM 接入）
+- **Main Projects**: 构建 HCIGuard（基于 nanobot 的 HCI 现场排障助手，含案例沉淀、巡检、IM 接入）
 - **Tools You Use**: Python、CLI、GitHub、Telegram、Mattermost
 
 ## Topics of Interest
@@ -49,4 +49,4 @@ Information about the user to help personalize interactions.
 
 ---
 
-*Edit this file to customize nanobot's behavior for your needs.*
+*Edit this file to customize HCIGuard's behavior for your needs.*
