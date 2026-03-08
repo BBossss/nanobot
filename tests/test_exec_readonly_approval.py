@@ -22,6 +22,28 @@ def test_exec_readonly_blocks_non_allowlisted_command(tmp_path: Path) -> None:
     assert "manual approval" in err
 
 
+def test_exec_readonly_blocks_macos_launchctl_stop(tmp_path: Path) -> None:
+    tool = ExecTool(
+        readonly_mode=True,
+        allowed_commands=["ps", "cat"],
+        approval_file=str(tmp_path / "approvals.json"),
+    )
+    err = tool._guard_command("launchctl stop com.apple.Finder", str(tmp_path))
+    assert err is not None
+    assert "dangerous pattern" in err
+
+
+def test_exec_readonly_blocks_macos_killall(tmp_path: Path) -> None:
+    tool = ExecTool(
+        readonly_mode=True,
+        allowed_commands=["ps", "cat"],
+        approval_file=str(tmp_path / "approvals.json"),
+    )
+    err = tool._guard_command("killall Finder", str(tmp_path))
+    assert err is not None
+    assert "dangerous pattern" in err
+
+
 def test_exec_readonly_allows_allowlisted_base_command(tmp_path: Path) -> None:
     tool = ExecTool(
         readonly_mode=True,
@@ -68,6 +90,25 @@ def test_exec_writes_audit_record_for_blocked_command(tmp_path: Path) -> None:
     assert payload["source"] == "exec"
     assert payload["status"] == "blocked"
     assert payload["command"] == "systemctl restart kubelet"
+
+
+def test_exec_writes_audit_record_for_dangerous_pattern_block(tmp_path: Path) -> None:
+    tool = ExecTool(
+        readonly_mode=False,
+        approval_file=str(tmp_path / "approvals.json"),
+        working_dir=str(tmp_path),
+    )
+
+    import asyncio
+
+    result = asyncio.run(_run_exec(tool, "launchctl stop com.apple.Finder", tmp_path))
+    assert "dangerous pattern" in result
+
+    audit_file = tmp_path / "audit" / "commands.jsonl"
+    assert audit_file.exists()
+    payload = json.loads(audit_file.read_text(encoding="utf-8").splitlines()[-1])
+    assert payload["status"] == "blocked"
+    assert payload["command"] == "launchctl stop com.apple.Finder"
 
 
 def test_approvals_cli_grant_list_revoke(tmp_path: Path, monkeypatch) -> None:

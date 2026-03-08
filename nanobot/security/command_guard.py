@@ -16,6 +16,10 @@ DEFAULT_DENY_PATTERNS = [
     r"\bdd\s+if=",
     r">\s*/dev/sd",
     r"\b(shutdown|reboot|poweroff)\b",
+    r"\blaunchctl\s+(?:stop|bootout|remove|unload|disable|kill)\b",
+    r"\bkillall\b",
+    r"\bpkill\b",
+    r"\bkill\s+-(?:9|15)\b",
     r":\(\)\s*\{.*\};\s*:",
 ]
 
