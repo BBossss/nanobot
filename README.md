@@ -10,6 +10,28 @@
 
 HCIGuard is a focused troubleshooting assistant for HCI environments. It keeps the original nanobot runtime as the base, then adds HCI-oriented diagnostics, case recording, inspection workflows, safety controls, and IM integration for operational use.
 
+## 10-Minute Path
+
+1. Install from source
+2. Run `nanobot onboard`
+3. Configure one model provider in `~/.nanobot/config.json`
+4. Enable diagnostics, cases, and inspection targets
+5. Start `nanobot agent` for local debugging or `nanobot gateway` for IM access
+6. Run `nanobot inspection run --no-llm --trigger manual`
+7. Review generated reports and cases
+
+If you only want the shortest usable path, use the install and quick start sections below, then test with:
+
+```bash
+nanobot agent
+```
+
+Ask:
+
+```text
+检查 /var/log/system.log 最近 200 行是否有 error，并给出结论
+```
+
 ## What It Does
 
 - Read logs and inspect host state with controlled, read-only diagnostic tools
@@ -35,6 +57,14 @@ Current HCI-oriented capabilities:
 - Safety: readonly `exec`, approval file, unified command audit
 - Planning: structured troubleshooting plans
 - Skills: built-in HCI troubleshooting skills
+
+## Prerequisites
+
+- Python `>= 3.11`
+- A reachable model provider endpoint and API key
+- Local readonly access to target logs or diagnostic commands
+- For Telegram or Mattermost usage: bot token and allowed user configuration
+- For inspection on Linux nodes: access to log files, `journalctl`, and selected readonly commands
 
 ## Architecture
 
@@ -85,9 +115,15 @@ cd nanobot
 pip install -e .
 ```
 
+Optional test dependency:
+
+```bash
+pip install pytest
+```
+
 ## Quick Start
 
-Initialize:
+Initialize workspace files and default templates:
 
 ```bash
 nanobot onboard
@@ -111,13 +147,35 @@ Configure your model in `~/.nanobot/config.json`:
 }
 ```
 
+Recommended first-run HCI settings:
+
+```json
+{
+  "cases": {
+    "enabled": true,
+    "recordMode": "end_only"
+  },
+  "inspection": {
+    "enabled": true
+  },
+  "tools": {
+    "exec": {
+      "readonlyMode": true
+    },
+    "diagnostics": {
+      "enabled": true
+    }
+  }
+}
+```
+
 Start local interactive mode:
 
 ```bash
 nanobot agent
 ```
 
-Start gateway mode:
+Start gateway mode for Telegram or Mattermost:
 
 ```bash
 nanobot gateway
@@ -176,6 +234,40 @@ Example:
 
 A reference file is also available at [hci-minimal-config.json](/Users/ruibinhuang/repos/nanobot/examples/hci-minimal-config.json).
 
+## Typical Workflow
+
+### Local Troubleshooting
+
+1. Start `nanobot agent`
+2. Describe the incident with time window, host, service, and symptoms
+3. Let HCIGuard inspect logs and current host state with readonly tools
+4. Review the conclusion and suggested next step
+5. Save the session as a case or let `recordMode=end_only` save the summary automatically
+
+### Inspection and Reporting
+
+1. Define inspection targets in `inspection.targets`
+2. Run:
+
+```bash
+nanobot inspection run --no-llm --trigger manual
+```
+
+3. Review the generated report under `~/.nanobot/workspace/reports/inspection`
+4. If configured, abnormal findings are converted into cases automatically
+
+### IM-Based Operation
+
+1. Configure Telegram or Mattermost
+2. Start:
+
+```bash
+nanobot gateway
+```
+
+3. Send troubleshooting requests from the allowed account
+4. Review command approvals and audit records if restricted actions are requested
+
 ## Channels
 
 ### Telegram
@@ -222,6 +314,21 @@ nanobot approvals grant --command "systemctl restart kubelet"
 nanobot approvals revoke --command "systemctl restart kubelet"
 ```
 
+## Files and Outputs
+
+Main runtime paths:
+
+- Config: `~/.nanobot/config.json`
+- Workspace: `~/.nanobot/workspace`
+- Cases: `~/.nanobot/workspace/notes/cases`
+- Reports: `~/.nanobot/workspace/reports/inspection`
+- Audit log: `~/.nanobot/workspace/audit/commands.jsonl`
+- Sessions: `~/.nanobot/workspace/sessions`
+
+Example case file:
+
+- [sample-storage-timeout.md](/Users/ruibinhuang/repos/nanobot/examples/cases/sample-storage-timeout.md)
+
 ## What This Repository Does Not Do
 
 Current non-goals or incomplete areas:
@@ -231,6 +338,22 @@ Current non-goals or incomplete areas:
 - It does not yet implement full cross-host troubleshooting orchestration
 - It does not ship a production web UI in this repository
 - It does not replace external CMDB, monitoring, or ticket systems; those are future integration targets
+
+## Example Troubleshooting Prompt
+
+You can start with messages like:
+
+```text
+节点 storage-02 从今天 14:00 开始延迟升高，请检查最近 500 行存储相关错误日志，给出证据、初步结论和下一步建议。
+```
+
+Expected output style:
+
+- Incident summary
+- Key evidence
+- Preliminary conclusion
+- Recommended next step
+- Risk or unknowns that still need confirmation
 
 ## Testing
 
