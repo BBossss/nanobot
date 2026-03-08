@@ -10,21 +10,11 @@ from typing import Any
 
 from nanobot.cases.store import CaseStore
 from nanobot.config.schema import CasesConfig, ExecToolConfig, InspectionConfig, InspectionTargetConfig
+from nanobot.policies.inspection import InspectionPolicy
 from nanobot.providers.base import LLMProvider
 from nanobot.security.audit import CommandAuditLogger
 from nanobot.security.command_guard import guard_command
 from nanobot.utils.helpers import ensure_dir
-
-
-DEFAULT_KEYWORDS = (
-    "error",
-    "failed",
-    "failure",
-    "panic",
-    "critical",
-    "exception",
-    "timeout",
-)
 
 
 class InspectionService:
@@ -84,17 +74,25 @@ class InspectionService:
         case_id = ""
         should_case = self._should_generate_case(bool(findings))
         if should_case:
-            item = self._case_store.write_case(
-                title=f"Inspection report {started.strftime('%Y-%m-%d %H:%M')}",
+            draft = InspectionPolicy.build_case_draft(
+                started=started,
                 trigger=trigger,
-                source="inspection",
-                summary=f"Inspection findings: {len(findings)}, target errors: {len(target_errors)}",
-                evidence=f"Report path: {report_path}\n\n" + "\n".join(f["line"] for f in findings[:20]),
-                conclusion=(llm_summary or "Please review report details.").strip()[:3000],
-                suggestion="Prioritize high-frequency errors and verify affected components.",
-                status="open" if findings else "resolved",
-                severity="high" if findings else "low",
-                tags=["inspection", "auto"],
+                findings=findings,
+                target_errors=target_errors,
+                report_path=str(report_path),
+                llm_summary=llm_summary,
+            )
+            item = self._case_store.write_case(
+                title=draft.title,
+                trigger=draft.trigger,
+                source=draft.source,
+                summary=draft.summary,
+                evidence=draft.evidence,
+                conclusion=draft.conclusion,
+                suggestion=draft.suggestion,
+                status=draft.status,
+                severity=draft.severity,
+                tags=draft.tags,
             )
             case_id = item["id"]
 
@@ -203,7 +201,7 @@ class InspectionService:
             return "", str(e)
 
     def _filter_lines(self, lines: list[str], target: InspectionTargetConfig) -> list[dict[str, Any]]:
-        keywords = [k.lower() for k in (target.keywords or list(DEFAULT_KEYWORDS)) if k]
+        keywords = InspectionPolicy.keywords_for(target.keywords)
         matches: list[dict[str, Any]] = []
         max_matches = max(1, target.max_matches)
 
@@ -227,20 +225,10 @@ class InspectionService:
         if not findings and not target_errors:
             return ""
 
-        finding_text = "\n".join(
-            f"- [{f['target']}:{f['line_no']}] {f['line'][:240]}" for f in findings[:80]
-        )
-        target_text = "\n".join(
-            f"- {r.get('name', '')} ({r.get('kind', '')}): {len(r.get('matches', []))} matches"
-            for r in target_results
-        )
-        error_text = "\n".join(f"- {e}" for e in target_errors) or "- none"
-        prompt = (
-            "You are an SRE assistant. Summarize inspection findings in Chinese.\n"
-            "Use sections: 概览, 重点异常, 可能原因, 建议动作.\n\n"
-            f"Targets:\n{target_text}\n\n"
-            f"Collector errors:\n{error_text}\n\n"
-            f"Matched lines:\n{finding_text or '- none'}"
+        prompt = InspectionPolicy.build_analysis_prompt(
+            findings=findings,
+            target_results=target_results,
+            target_errors=target_errors,
         )
 
         try:
@@ -264,55 +252,21 @@ class InspectionService:
         target_errors: list[str],
         llm_summary: str,
     ) -> str:
-        lines = [
-            f"# Inspection Report ({started.strftime('%Y-%m-%d %H:%M:%S')})",
-            "",
-            "## Summary",
-            f"- Trigger: {trigger}",
-            f"- Targets: {len(target_results)}",
-            f"- Findings: {len(findings)}",
-            f"- Target Errors: {len(target_errors)}",
-            "",
-            "## Target Overview",
-        ]
-        if target_results:
-            for result in target_results:
-                lines.append(
-                    f"- {result.get('name', '')} [{result.get('kind', '')}] "
-                    f"matches={len(result.get('matches', []))}"
-                )
-                if result.get("error"):
-                    lines.append(f"  collector_error: {result['error']}")
-        else:
-            lines.append("- No targets configured")
-
-        lines += ["", "## Matched Lines"]
-        if findings:
-            for f in findings[:200]:
-                lines.append(f"- [{f['target']}:{f['line_no']}] {f['line']}")
-        else:
-            lines.append("- No matched lines")
-
-        lines += ["", "## Collector Errors"]
-        if target_errors:
-            for e in target_errors:
-                lines.append(f"- {e}")
-        else:
-            lines.append("- None")
-
-        lines += ["", "## Model Analysis"]
-        lines.append(llm_summary or "Model analysis unavailable or skipped.")
-        lines.append("")
-        return "\n".join(lines)
+        return InspectionPolicy.render_report(
+            started=started,
+            trigger=trigger,
+            target_results=target_results,
+            findings=findings,
+            target_errors=target_errors,
+            llm_summary=llm_summary,
+        )
 
     def _report_path(self, now: datetime) -> Path:
         day_dir = ensure_dir(self.report_dir / now.strftime("%Y%m%d"))
         return day_dir / f"inspection-{now.strftime('%H%M%S')}.md"
 
     def _should_generate_case(self, has_findings: bool) -> bool:
-        mode = self.config.generate_case_on
-        if mode == "always":
-            return True
-        if mode == "error":
-            return has_findings
-        return False
+        return InspectionPolicy.should_generate_case(
+            mode=self.config.generate_case_on,
+            has_findings=has_findings,
+        )
