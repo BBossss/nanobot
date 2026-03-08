@@ -1,0 +1,58 @@
+{
+  "agents": {
+    "defaults": {
+      "workspace": "~/.nanobot/workspace",
+      "provider": "custom",
+      "model": "gpt-5-codex"
+    }
+  },
+  "providers": {
+    "custom": {
+      "apiKey": "YOUR_API_KEY",
+      "apiBase": "http://localhost:8000/v1"
+    }
+  },
+  "cases": {
+    "enabled": true,
+    "autoRecord": true,
+    "recordMode": "end_only",
+    "path": "~/.nanobot/workspace/notes/cases"
+  },
+  "inspection": {
+    "enabled": true,
+    "reportDir": "~/.nanobot/workspace/reports/inspection",
+    "generateCaseOn": "error",
+    "targets": [
+      {
+        "name": "system-log",
+        "kind": "log_file",
+        "enabled": true,
+        "path": "/var/log/system.log",
+        "keywords": ["error", "failed", "panic"],
+        "maxLines": 500,
+        "maxMatches": 50
+      }
+    ]
+  },
+  "tools": {
+    "exec": {
+      "readonlyMode": true,
+      "allowedCommands": ["ls", "cat", "grep", "journalctl", "systemctl"],
+      "approvalFile": "~/.nanobot/workspace/approvals/exec_allow.json"
+    },
+    "diagnostics": {
+      "enabled": true,
+      "allowedPaths": ["/var/log", "/opt/logs"],
+      "maxReadLines": 2000,
+      "maxSearchHits": 100
+    }
+  },
+  "channels": {
+    "mattermost": {
+      "enabled": false,
+      "baseUrl": "https://mm.example.com",
+      "token": "YOUR_BOT_TOKEN",
+      "allowFrom": ["YOUR_USER_ID"]
+    }
+  }
+}

@@ -15,6 +15,11 @@
 
 当前已整理的核心文档如下：
 
+另外，仓库中还提供了最小示例交付：
+
+- [最小配置示例](/Users/ruibinhuang/repos/nanobot/examples/hci-minimal-config.json)
+- [示例案例数据](/Users/ruibinhuang/repos/nanobot/examples/cases/sample-storage-timeout.md)
+
 ### 2.1 产品与方案边界
 
 - [HCI 排障助手 V1 PRD](/Users/ruibinhuang/repos/nanobot/docs/prd-hci-troubleshooting-assistant-v1.md)
