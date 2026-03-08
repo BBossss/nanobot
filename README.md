@@ -8,6 +8,10 @@
   </p>
 </div>
 
+<p align="center">
+  English | <a href="README.zh-CN.md">简体中文</a>
+</p>
+
 HCIGuard is a focused troubleshooting assistant for HCI environments. It keeps the original nanobot runtime as the base, then adds HCI-oriented diagnostics, case recording, inspection workflows, safety controls, and IM integration for operational use.
 
 ## 10-Minute Path
