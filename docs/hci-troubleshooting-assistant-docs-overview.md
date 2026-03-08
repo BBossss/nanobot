@@ -66,11 +66,13 @@
 ### 2.4 当前开发状态
 
 - [HCI 排障助手 V1 开发状态清单](/Users/ruibinhuang/repos/nanobot/docs/development-status-v1.md)
+- [HCIGuard 平台化 V2 路线](/Users/ruibinhuang/repos/nanobot/docs/platform-roadmap-v2.md)
 
 作用：
 
 - 汇总当前哪些任务已完成、哪些部分完成、哪些仍待做
 - 明确当前代码底座已经收口到 `CLI + Telegram + Mattermost`
+- 明确下一阶段应如何从 V1 雏形继续走向平台化
 
 适合回答的问题：
 
@@ -176,11 +178,13 @@
 继续阅读：
 
 - [HCI 排障助手 V1 开发状态清单](/Users/ruibinhuang/repos/nanobot/docs/development-status-v1.md)
+- [HCIGuard 平台化 V2 路线](/Users/ruibinhuang/repos/nanobot/docs/platform-roadmap-v2.md)
 
 目的：
 
 - 明确当前哪些任务已经完成
 - 明确下一轮最值得推进的工作
+- 明确平台化阶段的优先任务与非优先任务
 
 ### 第五步：锁定安全边界
 
