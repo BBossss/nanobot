@@ -46,6 +46,12 @@ V1 建议拆为 6 个阶段：
 - 阶段 E：Mattermost 接入
 - 阶段 F：稳定性与上线准备
 
+补充建议：
+
+当前 V1 主链路已基本落地。若进入下一轮演进，建议新增一个文档与 Skill 优先的阶段：
+
+- 阶段 G：Skill 化收口
+
 ## 4. 阶段 A：基础收口
 
 ### A1. 文档评审闭环
@@ -665,6 +671,12 @@ V1 建议拆为 6 个阶段：
 - F4 部署与运行手册
 - F5 示例配置与示例数据
 
+新增建议：
+
+- G2 Skill 模板规范
+- G3 HCI 通用排障 Skill 文档
+- G4 巡检分析 Skill 文档
+
 ## 11. 最小可运行闭环
 
 如果只做最小闭环，建议先完成以下任务：
@@ -701,8 +713,236 @@ V1 建议拆为 6 个阶段：
 - `epic/inspection-reporting`
 - `epic/mattermost-channel`
 - `epic/stability-release`
+- `epic/skillization`
 
-## 13. 与现有文档的关系
+## 13. 阶段 G：Skill 化收口
+
+### G1. Skill 边界确认
+
+目标：
+
+- 明确哪些能力继续保留在主代码
+- 明确哪些 HCI 场景逻辑迁移到 Skill
+
+输出：
+
+- Skill 边界说明
+- 主代码保留清单
+- 后续迁移候选清单
+
+依赖：
+
+- [technical-design-hci-troubleshooting-assistant-v1.md](/Users/ruibinhuang/repos/nanobot/docs/technical-design-hci-troubleshooting-assistant-v1.md)
+
+优先级：
+
+- P0
+
+### G2. Skill 模板规范
+
+目标：
+
+- 定义统一的 `SKILL.md` 模板
+- 定义 `references/` 目录规范
+- 定义输出结构与风险提示要求
+
+输出：
+
+- Skill 编写规范文档
+
+依赖：
+
+- G1
+
+优先级：
+
+- P0
+
+### G3. HCI 通用排障 Skill 文档
+
+目标：
+
+- 输出 `hci-troubleshooting` Skill 初稿
+
+输出：
+
+- HCI 通用排障 Skill 文档
+
+依赖：
+
+- G2
+
+优先级：
+
+- P0
+
+### G4. 巡检分析 Skill 文档
+
+目标：
+
+- 输出 `hci-inspection-analysis` Skill 初稿
+
+输出：
+
+- 巡检分析 Skill 文档
+
+依赖：
+
+- G2
+
+优先级：
+
+- P1
+
+### G5. 案例总结 Skill 文档
+
+目标：
+
+- 输出 `hci-case-summary` Skill 初稿
+
+输出：
+
+- 案例总结 Skill 文档
+
+依赖：
+
+- G2
+
+优先级：
+
+- P1
+
+### G6. 专项 SOP Skill 文档
+
+目标：
+
+- 输出 `hci-storage-network-sop` Skill 初稿
+
+输出：
+
+- 存储/网络/节点健康 SOP Skill 文档
+
+依赖：
+
+- G2
+
+优先级：
+
+- P2
+
+### G7. Skill 验收清单
+
+目标：
+
+- 定义 Skill 化后的验收标准
+
+输出：
+
+- 稳定性验收点
+- 输出结构一致性验收点
+- 场景扩展性验收点
+
+依赖：
+
+- G3
+- G4
+- G5
+
+优先级：
+
+- P1
+
+### G8. 统一执行安全入口设计
+
+目标：
+
+- 收敛所有命令执行路径
+- 使巡检与主对话共享同一套执行安全边界
+
+输出：
+
+- 统一执行入口设计说明
+- 巡检执行路径收口方案
+- 白名单 / 审批 / 审计复用方案
+
+依赖：
+
+- G1
+
+优先级：
+
+- P0
+
+建议子任务：
+
+- G8.1 盘点所有执行路径
+- G8.2 定义统一执行治理接口
+- G8.3 巡检 `command` 路径收口设计
+- G8.4 审计与审批复用设计
+- G8.5 安全回归验收清单
+
+### G9. `AgentLoop` 策略层迁出方案
+
+目标：
+
+- 梳理 `AgentLoop` 中的 HCI 业务策略
+- 明确迁移到 Skill / policy 的顺序与范围
+
+输出：
+
+- 策略层清单
+- 迁移优先级
+- 兜底兼容策略
+
+依赖：
+
+- G1
+- G3
+- G4
+- G5
+
+优先级：
+
+- P0
+
+建议子任务：
+
+- G9.1 识别 `AgentLoop` 中的场景策略逻辑
+- G9.2 标记平台职责与策略职责边界
+- G9.3 定义 Skill / policy 承载方式
+- G9.4 设计迁移过程中的兜底策略
+- G9.5 定义迁移后的回归验收点
+
+### G10. 存储与配置层收口方案
+
+目标：
+
+- 提升案例存储并发安全性
+- 控制配置模型继续膨胀
+
+输出：
+
+- 案例索引原子写或加锁方案
+- 路径语义修正规则
+- 配置分层与收口建议
+
+依赖：
+
+- G1
+
+优先级：
+
+- P0
+
+建议子任务：
+
+- G10.1 案例索引并发写风险评估
+- G10.2 原子写或加锁方案设计
+- G10.3 路径语义与 workspace 依赖梳理
+- G10.4 配置域拆分建议
+- G10.5 配置增长控制原则
+
+## 14. 与现有文档的关系
 
 本任务拆解清单基于以下文档整理：
 
@@ -712,4 +952,3 @@ V1 建议拆为 6 个阶段：
 - [case-record-spec-v1.md](/Users/ruibinhuang/repos/nanobot/docs/case-record-spec-v1.md)
 - [inspection-and-report-spec-v1.md](/Users/ruibinhuang/repos/nanobot/docs/inspection-and-report-spec-v1.md)
 - [mattermost-integration-open-questions.md](/Users/ruibinhuang/repos/nanobot/docs/mattermost-integration-open-questions.md)
-
