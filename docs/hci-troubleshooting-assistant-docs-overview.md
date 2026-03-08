@@ -68,6 +68,7 @@
 - [HCI 排障助手 V1 开发状态清单](/Users/ruibinhuang/repos/nanobot/docs/development-status-v1.md)
 - [HCIGuard 平台化 V2 路线](/Users/ruibinhuang/repos/nanobot/docs/platform-roadmap-v2.md)
 - [HCIGuard 高频 HCI 场景优先级清单（V1.5）](/Users/ruibinhuang/repos/nanobot/docs/hci-scenario-priority-v1_5.md)
+- [HCIGuard 升级失败 / 升级后异常场景规格（V1）](/Users/ruibinhuang/repos/nanobot/docs/upgrade-failure-scenario-spec-v1.md)
 
 作用：
 
@@ -75,6 +76,7 @@
 - 明确当前代码底座已经收口到 `CLI + Telegram + Mattermost`
 - 明确下一阶段应如何从 V1 雏形继续走向平台化
 - 明确下一阶段优先打穿哪几个高频场景
+- 明确第一个优先场景的输入边界、日志入口与落地拆解方向
 
 适合回答的问题：
 
@@ -182,6 +184,7 @@
 - [HCI 排障助手 V1 开发状态清单](/Users/ruibinhuang/repos/nanobot/docs/development-status-v1.md)
 - [HCIGuard 平台化 V2 路线](/Users/ruibinhuang/repos/nanobot/docs/platform-roadmap-v2.md)
 - [HCIGuard 高频 HCI 场景优先级清单（V1.5）](/Users/ruibinhuang/repos/nanobot/docs/hci-scenario-priority-v1_5.md)
+- [HCIGuard 升级失败 / 升级后异常场景规格（V1）](/Users/ruibinhuang/repos/nanobot/docs/upgrade-failure-scenario-spec-v1.md)
 
 目的：
 
@@ -189,6 +192,7 @@
 - 明确下一轮最值得推进的工作
 - 明确平台化阶段的优先任务与非优先任务
 - 明确下一阶段先打穿哪些高频 HCI 场景
+- 明确第一个优先场景应该如何从日志、服务和案例结构切入
 
 ### 第五步：锁定安全边界
 
