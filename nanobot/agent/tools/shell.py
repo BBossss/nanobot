@@ -7,7 +7,13 @@ from typing import Any
 
 from nanobot.agent.tools.base import Tool
 from nanobot.security.audit import CommandAuditLogger
-from nanobot.security.command_guard import DEFAULT_DENY_PATTERNS, guard_command, load_manual_approvals, extract_base_command
+from nanobot.security.command_guard import (
+    DEFAULT_DENY_PATTERNS,
+    extract_absolute_paths,
+    extract_base_command,
+    guard_command,
+    load_manual_approvals,
+)
 
 
 class ExecTool(Tool):
@@ -158,3 +164,8 @@ class ExecTool(Tool):
 
     def _load_manual_approvals(self) -> set[str]:
         return load_manual_approvals(self.approval_file)
+
+    @staticmethod
+    def _extract_absolute_paths(command: str) -> list[str]:
+        """Compatibility wrapper kept for existing tests and callers."""
+        return extract_absolute_paths(command)
