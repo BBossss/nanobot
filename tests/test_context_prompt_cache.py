@@ -85,5 +85,6 @@ def test_system_prompt_mentions_structured_remote_exec_rules(tmp_path) -> None:
 
     assert "`target`" in prompt
     assert "不要直接拼写原始 `ssh ...` 命令字符串" in prompt
+    assert "优先使用高频只读调查动作" in prompt
     assert "CLI" in prompt
     assert "SSH 密码" in prompt
