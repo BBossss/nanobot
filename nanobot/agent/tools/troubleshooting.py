@@ -53,8 +53,14 @@ class _BaseTroubleshootingTool(Tool):
     def _is_path_allowed_str(self, path: str) -> bool:
         for root in self.allowed_log_roots:
             root_str = str(root).rstrip("/")
-            if path == root_str or path.startswith(root_str + "/"):
-                return True
+            candidates = [root_str]
+            if root_str.startswith("/private/"):
+                candidates.append(root_str[len("/private") :])
+            elif root_str.startswith("/var/"):
+                candidates.append("/private" + root_str)
+            for candidate in candidates:
+                if path == candidate or path.startswith(candidate + "/"):
+                    return True
         return False
 
     def _validate_log_path(self, path: str) -> tuple[Path | None, str | None]:

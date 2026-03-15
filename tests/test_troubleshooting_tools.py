@@ -1,5 +1,6 @@
 import os
 import time
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -84,6 +85,13 @@ async def test_read_log_tail_supports_remote_target(monkeypatch) -> None:
     result = await tool.execute(path="/sf/log/today/update.log", target="ops@host-a")
 
     assert "tail output" in result
+
+
+def test_read_log_tail_accepts_var_log_alias() -> None:
+    tool = ReadLogTailTool()
+    tool.allowed_log_roots = [Path("/private/var/log")]
+
+    assert tool._is_path_allowed_str("/var/log/system.log") is True
 
 
 @pytest.mark.asyncio
