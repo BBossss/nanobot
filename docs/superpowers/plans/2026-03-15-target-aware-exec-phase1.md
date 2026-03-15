@@ -78,7 +78,7 @@
 - 修改：`nanobot/config/schema.py`
 - 测试：`tests/test_exec_target_aware.py`
 
-- [ ] **步骤 1：先写会失败的测试，覆盖配置默认值与 `target` 解析**
+- [x] **步骤 1：先写会失败的测试，覆盖配置默认值与 `target` 解析**
 
 ```python
 from nanobot.config.schema import ExecToolConfig
@@ -109,7 +109,7 @@ def test_parse_exec_target_for_remote_host() -> None:
     assert target.port == 2222
 ```
 
-- [ ] **步骤 2：运行新增测试，确认当前实现确实失败**
+- [x] **步骤 2：运行新增测试，确认当前实现确实失败**
 
 运行：
 
@@ -122,7 +122,7 @@ pytest tests/test_exec_target_aware.py -v
 - 报出 `nanobot.agent.tools.exec_transport` 的 `ModuleNotFoundError`
 - 或提示缺少 `default_target`、`ssh` 等配置属性
 
-- [ ] **步骤 3：补齐最小配置模型和传输层数据结构**
+- [x] **步骤 3：补齐最小配置模型和传输层数据结构**
 
 实现内容：
 
@@ -147,7 +147,7 @@ class ExecTarget:
     username: str = ""
 ```
 
-- [ ] **步骤 4：重新运行聚焦测试**
+- [x] **步骤 4：重新运行聚焦测试**
 
 运行：
 
@@ -161,7 +161,7 @@ pytest tests/test_exec_target_aware.py -v
 - 本地 `target` 解析断言通过
 - 远程 `target` 解析断言通过
 
-- [ ] **步骤 5：运行现有的配置相关回归测试**
+- [x] **步骤 5：运行现有的配置相关回归测试**
 
 运行：
 
@@ -174,7 +174,7 @@ pytest tests/test_commands.py tests/test_tool_validation.py -v
 - 测试通过
 - 现有配置行为没有回归
 
-- [ ] **步骤 6：提交本阶段改动**
+- [x] **步骤 6：提交本阶段改动**
 
 ```bash
 git add nanobot/config/schema.py nanobot/agent/tools/exec_transport.py tests/test_exec_target_aware.py
@@ -191,7 +191,7 @@ git commit -m "feat: add target-aware exec config skeleton"
 - 测试：`tests/test_exec_target_aware.py`
 - 测试：`tests/test_exec_readonly_approval.py`
 
-- [ ] **步骤 1：先写会失败的测试，覆盖 `target` 感知后的执行分流**
+- [x] **步骤 1：先写会失败的测试，覆盖 `target` 感知后的执行分流**
 
 补充类似下面的测试：
 
@@ -233,7 +233,7 @@ async def test_exec_routes_remote_target_to_ssh_transport(tmp_path, monkeypatch)
     assert result == "remote-ok"
 ```
 
-- [ ] **步骤 2：运行聚焦测试，确认当前分流逻辑尚未实现**
+- [x] **步骤 2：运行聚焦测试，确认当前分流逻辑尚未实现**
 
 运行：
 
@@ -248,7 +248,7 @@ pytest tests/test_exec_target_aware.py::test_exec_runs_local_when_target_is_loca
 - 由于 `ExecTool.execute()` 尚未接受 `target` 而失败
 - 或由于执行分流辅助逻辑尚不存在而失败
 
-- [ ] **步骤 3：为 `ExecTool` 增加面向 `target` 的执行分流**
+- [x] **步骤 3：为 `ExecTool` 增加面向 `target` 的执行分流**
 
 在 `nanobot/agent/tools/shell.py` 中实现：
 
@@ -263,7 +263,7 @@ pytest tests/test_exec_target_aware.py::test_exec_runs_local_when_target_is_loca
 
 `execute()` 应继续作为唯一的公开入口。
 
-- [ ] **步骤 4：实现最小可用的 SSH 传输执行辅助逻辑**
+- [x] **步骤 4：实现最小可用的 SSH 传输执行辅助逻辑**
 
 在 `nanobot/agent/tools/exec_transport.py` 中实现：
 
@@ -273,7 +273,7 @@ pytest tests/test_exec_target_aware.py::test_exec_runs_local_when_target_is_loca
 
 暂时不要为跳板机、交互式 PTY、凭据租约系统做优化。
 
-- [ ] **步骤 5：重新运行聚焦的执行分流测试**
+- [x] **步骤 5：重新运行聚焦的执行分流测试**
 
 运行：
 
@@ -287,7 +287,7 @@ pytest tests/test_exec_target_aware.py -v
 - 远程 `target` 分流断言通过
 - 裸写 `ssh` 命令字符串会被拒绝
 
-- [ ] **步骤 6：重新运行只读 guard 回归测试**
+- [x] **步骤 6：重新运行只读 guard 回归测试**
 
 运行：
 
@@ -300,7 +300,7 @@ pytest tests/test_exec_readonly_approval.py tests/test_exec_dialog_guard.py -v
 - 测试通过
 - 危险命令依然会被阻止
 
-- [ ] **步骤 7：提交本阶段改动**
+- [x] **步骤 7：提交本阶段改动**
 
 ```bash
 git add nanobot/agent/tools/shell.py nanobot/agent/tools/exec_transport.py tests/test_exec_target_aware.py tests/test_exec_readonly_approval.py
@@ -318,7 +318,7 @@ git commit -m "feat: route exec through target-aware local and ssh execution"
 - 测试：`tests/test_loop_save_turn.py`
 - 测试：`tests/test_commands.py`
 
-- [ ] **步骤 1：先写会失败的测试，覆盖密码型 SSH 行为**
+- [x] **步骤 1：先写会失败的测试，覆盖密码型 SSH 行为**
 
 补充类似下面的测试：
 
@@ -362,7 +362,7 @@ async def test_exec_remote_password_is_redacted_from_audit(tmp_path, monkeypatch
     assert "secret-123" not in payload["command"]
 ```
 
-- [ ] **步骤 2：运行密码型 SSH 测试，确认当前实现失败**
+- [x] **步骤 2：运行密码型 SSH 测试，确认当前实现失败**
 
 运行：
 
@@ -375,7 +375,7 @@ pytest tests/test_exec_ssh_password.py -v
 - 由于 `ssh_password` 尚未被接受而失败
 - 或由于审计日志仍泄漏原始密码值而失败
 
-- [ ] **步骤 3：为 `exec` 增加最小可用的密码支持**
+- [x] **步骤 3：为 `exec` 增加最小可用的密码支持**
 
 实现要求：
 
@@ -397,7 +397,7 @@ pytest tests/test_exec_ssh_password.py -v
 - 显式的密码清理命令
 - 持久化凭据存储
 
-- [ ] **步骤 4：补充持久化安全回归测试**
+- [x] **步骤 4：补充持久化安全回归测试**
 
 扩展 `tests/test_loop_save_turn.py`，或在邻近测试中增加覆盖，确保带有敏感信息的运行时字段不会写入保存后的会话历史。
 
@@ -407,7 +407,7 @@ pytest tests/test_exec_ssh_password.py -v
 assert "secret-123" not in saved_jsonl_text
 ```
 
-- [ ] **步骤 5：重新运行密码与持久化相关测试**
+- [x] **步骤 5：重新运行密码与持久化相关测试**
 
 运行：
 
@@ -420,7 +420,7 @@ pytest tests/test_exec_ssh_password.py tests/test_loop_save_turn.py -v
 - 测试通过
 - 密码不会泄漏到审计日志或会话持久化内容中
 
-- [ ] **步骤 6：运行完整的 `exec` 相关测试集**
+- [x] **步骤 6：运行完整的 `exec` 相关测试集**
 
 运行：
 
@@ -433,7 +433,7 @@ pytest tests/test_exec_*.py tests/test_loop_save_turn.py tests/test_commands.py 
 - 测试通过
 - 现有 `exec` 审批与 guard 行为没有回归
 
-- [ ] **步骤 7：提交本阶段改动**
+- [x] **步骤 7：提交本阶段改动**
 
 ```bash
 git add nanobot/agent/tools/shell.py nanobot/agent/tools/exec_transport.py tests/test_exec_ssh_password.py tests/test_loop_save_turn.py tests/test_commands.py
@@ -449,7 +449,7 @@ git commit -m "feat: add password-backed ssh execution to exec"
 - 修改：`docs/superpowers/specs/2026-03-15-shell-first-ssh-first-troubleshooting-agent-design.md`（仅当实现与设计有偏差时）
 - 测试：`tests/test_commands.py`
 
-- [ ] **步骤 1：补齐会失败或缺失的 CLI / 配置回归测试**
+- [x] **步骤 1：补齐会失败或缺失的 CLI / 配置回归测试**
 
 补充或扩展测试，验证以下内容：
 
@@ -457,7 +457,7 @@ git commit -m "feat: add password-backed ssh execution to exec"
 - 配置序列化与反序列化能正确保留新增的 `exec` / SSH 设置
 - 如果 CLI 或默认配置会暴露帮助文本，则这些帮助文本仍然连贯
 
-- [ ] **步骤 2：运行聚焦的命令与配置测试**
+- [x] **步骤 2：运行聚焦的命令与配置测试**
 
 运行：
 
@@ -469,7 +469,7 @@ pytest tests/test_commands.py -v
 
 - 如果新增配置或行为还未写入文档、或尚未接入测试，这里应先失败
 
-- [ ] **步骤 3：以最小范围更新面向用户的文档**
+- [x] **步骤 3：以最小范围更新面向用户的文档**
 
 只记录第一阶段已经落地的行为：
 
@@ -479,7 +479,7 @@ pytest tests/test_commands.py -v
 
 不要记录尚未实现的后续调查动作能力。
 
-- [ ] **步骤 4：基于当前 worktree 的干净基线运行全量测试**
+- [x] **步骤 4：基于当前 worktree 的干净基线运行全量测试**
 
 运行：
 
@@ -492,7 +492,7 @@ pytest
 - 测试通过
 - 相比该 worktree 已建立的干净基线没有出现回归
 
-- [ ] **步骤 5：提交本阶段改动**
+- [x] **步骤 5：提交本阶段改动**
 
 ```bash
 git add README.md tests/test_commands.py
