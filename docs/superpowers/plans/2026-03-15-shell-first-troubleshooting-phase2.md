@@ -698,7 +698,7 @@ Expected:
 - 新增调查动作远程场景通过
 - 现有 SSH 密码与 loopback 能力不回退
 
-- [ ] **Step 5: 提交最终收口**
+- [x] **Step 5: 提交最终收口**
 
 ```bash
 git add tests/test_troubleshooting_tools.py tests/test_agentloop_troubleshooting_flow.py tests/test_exec_loopback_acceptance.py tests/test_exec_ssh_password.py tests/test_local_ssh_lab.py scripts/run_exec_ssh_loopback_acceptance.py
