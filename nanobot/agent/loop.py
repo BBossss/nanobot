@@ -7,6 +7,7 @@ import json
 import re
 import weakref
 from contextlib import AsyncExitStack
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
@@ -40,6 +41,14 @@ from nanobot.session.manager import Session, SessionManager
 if TYPE_CHECKING:
     from nanobot.config.schema import CasesConfig, ChannelsConfig, DiagnosticsToolConfig, ExecToolConfig
     from nanobot.cron.service import CronService
+
+
+@dataclass
+class InvestigationState:
+    """Per-request lightweight investigation state."""
+
+    rounds: int = 0
+    consecutive_stale_rounds: int = 0
 
 
 class AgentLoop:
@@ -92,6 +101,7 @@ class AgentLoop:
         self.brave_api_key = brave_api_key
         self.web_proxy = web_proxy
         self.exec_config = exec_config or ExecToolConfig()
+        self.max_investigation_rounds = max(1, self.exec_config.max_investigation_rounds)
         self.diagnostics_config = diagnostics_config
         self.cases_config = cases_config
         self.cron_service = cron_service
@@ -272,6 +282,43 @@ class AgentLoop:
             redacted.append(entry)
         return redacted
 
+    @staticmethod
+    def _tool_call_signature(name: str, arguments: dict[str, Any]) -> str:
+        """Build a stable signature for repeated investigation actions."""
+        return json.dumps({"name": name, "arguments": arguments}, ensure_ascii=False, sort_keys=True)
+
+    @staticmethod
+    def _result_signature(result: str) -> str:
+        """Normalize tool output for evidence de-duplication."""
+        return result.strip()
+
+    @staticmethod
+    def _format_cached_tool_result(result: str) -> str:
+        """Annotate reused tool output so the model can converge instead of re-sampling."""
+        base = result.strip() or "(no output)"
+        return (
+            f"{base}\n\n"
+            "[Investigation cache] Reused an identical tool call result from this same request; "
+            "no new evidence was produced."
+        )
+
+    def _build_investigation_limit_message(self) -> str:
+        """Build the stop message when the investigation round limit is reached."""
+        return (
+            f"I reached the maximum investigation rounds ({self.max_investigation_rounds}) "
+            "for this request. Summarize the evidence collected so far, state what remains uncertain, "
+            "and propose the next highest-value readonly check."
+        )
+
+    @staticmethod
+    def _build_stale_investigation_message() -> str:
+        """Build the stop message when repeated rounds stop yielding new evidence."""
+        return (
+            "I stopped the investigation because two consecutive rounds produced no new evidence. "
+            "Summarize the current findings, distinguish facts from inference, and suggest either "
+            "a narrower target/time window or the next best readonly direction."
+        )
+
     async def _run_agent_loop(
         self,
         initial_messages: list[dict],
@@ -282,6 +329,9 @@ class AgentLoop:
         iteration = 0
         final_content = None
         tools_used: list[str] = []
+        investigation = InvestigationState()
+        tool_result_cache: dict[str, str] = {}
+        seen_result_signatures: set[str] = set()
 
         while iteration < self.max_iterations:
             iteration += 1
@@ -296,6 +346,7 @@ class AgentLoop:
             )
 
             if response.has_tool_calls:
+                investigation.rounds += 1
                 if on_progress:
                     clean = self._strip_think(response.content)
                     if clean:
@@ -322,6 +373,7 @@ class AgentLoop:
                     thinking_blocks=response.thinking_blocks,
                 )
 
+                round_has_new_evidence = False
                 for tool_call in response.tool_calls:
                     tools_used.append(tool_call.name)
                     args_str = json.dumps(
@@ -329,10 +381,32 @@ class AgentLoop:
                         ensure_ascii=False,
                     )
                     logger.info("Tool call: {}({})", tool_call.name, args_str[:200])
-                    result = await self.tools.execute(tool_call.name, tool_call.arguments)
+                    signature = self._tool_call_signature(tool_call.name, tool_call.arguments)
+                    if signature in tool_result_cache:
+                        result = self._format_cached_tool_result(tool_result_cache[signature])
+                    else:
+                        result = await self.tools.execute(tool_call.name, tool_call.arguments)
+                        tool_result_cache[signature] = result
+                        result_sig = self._result_signature(result)
+                        if result_sig not in seen_result_signatures:
+                            seen_result_signatures.add(result_sig)
+                            round_has_new_evidence = True
                     messages = self.context.add_tool_result(
                         messages, tool_call.id, tool_call.name, result
                     )
+
+                if round_has_new_evidence:
+                    investigation.consecutive_stale_rounds = 0
+                else:
+                    investigation.consecutive_stale_rounds += 1
+
+                if investigation.consecutive_stale_rounds >= 2:
+                    final_content = self._build_stale_investigation_message()
+                    break
+
+                if investigation.rounds >= self.max_investigation_rounds:
+                    final_content = self._build_investigation_limit_message()
+                    break
             else:
                 clean = self._strip_think(response.content)
                 # Don't persist error responses to session history — they can
