@@ -61,48 +61,36 @@ HCIGuard VNext 应该优先变成：
 
 ## 4. 总体架构
 
-本设计保留当前 `AgentLoop` 作为中枢，但在其周边增加 3 个清晰分层。
+本设计保留当前 `AgentLoop` 作为中枢，但第一版不额外引入独立的 SSH tool，也不优先拆成过重的远程执行体系。
 
-### 4.1 Target / Session 层
+第一版架构重点是：
 
-这一层负责描述“排障动作在哪执行”。
+- 增强现有 `exec`
+- 让 `exec` 接收 `target`
+- 当目标是远程主机时，在 `exec` 内部切换到 SSH 执行模式
+- 在此基础上逐步补充调查动作
 
-核心概念：
+### 4.1 增强版 exec
 
-- `Target`
-  - `id`
-  - `kind`：`local` 或 `ssh`
-  - `host`
-  - `port`
-  - `username`
-- `TargetSession`
-  - 针对某个目标机的会话上下文
-  - 可以持有当前进程内存中的 SSH 密码状态
+第一版的核心执行入口仍然是 `exec`。
 
-职责：
+它需要支持：
 
-- 表示当前排障目标
-- 区分本机与远程执行
-- 为一次排障过程提供稳定的执行目标
+- `target=local`
+- `target=<remote host>`
+- 本机执行与远程 SSH 执行的统一返回格式
+- 目标机元数据
+- 密码型 SSH 的进程内处理
+- 最小必要的破坏性命令拦截
 
-### 4.2 Executor 层
+这意味着：
 
-这一层负责“如何执行”。
+- 对 agent 来说，主要还是在使用一个增强版 `exec`
+- 对实现来说，SSH 是 `exec` 的内部执行模式，而不是单独暴露的新工具类型
 
-职责：
+### 4.2 调查动作层
 
-- 在指定目标上执行只读 shell 命令
-- 为远程目标处理 SSH 传输
-- 在当前进程内处理密码型 SSH
-- 统一 stdout / stderr / exit code / timeout / target 元数据
-- 处理最小必要的破坏性命令边界
-- 输出脱敏后的审计信息
-
-这一层不负责排障语义，不回答“服务 X 该看什么日志”。
-
-### 4.3 Troubleshooting Actions 层
-
-这一层负责“排障要查什么”。
+在增强版 `exec` 之上，逐步补充更稳定的调查动作。
 
 典型动作：
 
@@ -118,9 +106,9 @@ HCIGuard VNext 应该优先变成：
 - `expand_by_keyword`
 - `expand_by_service`
 
-这些动作都接收 `target`，但不关心底下是本机执行还是 SSH 执行。
+这些动作都应接受 `target`，但底层仍可以复用增强版 `exec`。
 
-### 4.4 Skills 层
+### 4.3 Skills 层
 
 Skill 继续负责：
 
@@ -130,7 +118,7 @@ Skill 继续负责：
 - 输出结构
 - 环境知识
 
-Skill 不替代实际执行能力，它只指导 agent 如何使用工具和 shell 能力。
+Skill 不替代实际执行能力，它只指导 agent 如何使用调查动作和增强版 `exec`。
 
 ## 5. 为什么不能只靠 exec
 
@@ -146,7 +134,7 @@ Skill 不替代实际执行能力，它只指导 agent 如何使用工具和 she
 因此本设计采用混合模式：
 
 - 主路径：调查动作 + shell-first 调查
-- 兜底路径：更自由的 `exec`
+- 兜底路径：更自由的增强版 `exec`
 
 这不是“工具优先、完全不用 shell”，也不是“全都靠自由 shell”。
 
@@ -160,7 +148,8 @@ Skill 不替代实际执行能力，它只指导 agent 如何使用工具和 she
 
 - 支持 `target=local`
 - 支持 `target=<remote host>`
-- 当目标为远程主机时，自动通过 SSH 执行
+- 当目标为远程主机时，在 `exec` 内部自动走 SSH 执行模式
+- 不要求模型自己拼完整 SSH 命令字符串
 - 保留当前输出风格，但补强 target 感知和排障可用性
 
 ### 6.2 最小必要边界
@@ -181,7 +170,7 @@ Skill 不替代实际执行能力，它只指导 agent 如何使用工具和 she
 
 ### 6.3 密码型 SSH
 
-密码型 SSH 是必须能力。
+密码型 SSH 是增强版 `exec` 必须支持的能力。
 
 第一版约束如下：
 
@@ -261,7 +250,7 @@ Skill 不替代实际执行能力，它只指导 agent 如何使用工具和 she
 必须优先补上：
 
 - 支持 target 的增强版 `exec`
-- 基于 SSH 的远程执行
+- 增强版 `exec` 内部支持基于 SSH 的远程执行
 - `find_logs`
 - `read_log_tail`
 - `search_log`
@@ -306,7 +295,7 @@ Skill 不替代实际执行能力，它只指导 agent 如何使用工具和 she
 
 ### 9.2 适合做成 Tool 的
 
-- 本机 / 远程执行能力
+- 增强版 `exec` 的本机 / 远程执行能力
 - 读日志
 - 搜日志
 - 找日志
@@ -329,9 +318,9 @@ Skill 不替代实际执行能力，它只指导 agent 如何使用工具和 she
 
 重点：
 
-- 引入 target 抽象
+- 为 `exec` 增加 `target` 参数
 - 把 `exec` 升级成 target-aware 执行底座
-- 补远程 SSH 执行
+- 在 `exec` 内部补远程 SSH 执行模式
 - 用最小代价支持密码型 SSH
 - 补最小可用调查动作集
 
@@ -390,10 +379,10 @@ Skill 不替代实际执行能力，它只指导 agent 如何使用工具和 she
 
 最低覆盖应包括：
 
-- 本机 / 远程 target-aware `exec`
+- 带 `target` 的增强版 `exec`
 - SSH 密码不进入 session 持久化路径
 - SSH 基础失败场景
-- 调查动作对 executor 返回值的处理
+- 调查动作对增强版 `exec` 返回值的处理
 - 重复调查抑制逻辑
 - 单机排障的代表性端到端链路
 
@@ -439,6 +428,6 @@ HCIGuard VNext 应按以下原则推进：
 
 最快产生用户体感价值的路径是：
 
-1. 让 `exec` 支持 target 和 SSH
+1. 让 `exec` 支持 `target` 和内部 SSH 执行模式
 2. 补一小组高价值调查动作
 3. 让 `AgentLoop` 能继续调查，而不是早停

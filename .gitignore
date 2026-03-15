@@ -4,6 +4,7 @@
 dist/
 build/
 docs/
+.worktrees/
 *.egg-info/
 *.egg
 *.pyc
