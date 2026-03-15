@@ -231,6 +231,18 @@ nohup python3 -m nanobot.cli.commands gateway > tmp/hciguard_gateway.log 2>&1 &
 
 - [hci-minimal-config.json](examples/hci-minimal-config.json)
 
+如果你要在本机回环验证 SSH 路径，可以执行：
+
+```bash
+python3 scripts/local_ssh_lab.py start
+python3 scripts/local_ssh_lab.py status
+python3 scripts/local_ssh_lab.py stop
+```
+
+这个脚本会在 `/tmp/nanobot-ssh-lab` 下启动两个本机目标：
+- 公钥 SSH：`<你的用户名>@127.0.0.1:2322`
+- 密码 SSH：`nanobot@127.0.0.1:2323`，密码是 `secret-123`
+
 ## 典型使用流程
 
 ### 本地排障
@@ -369,6 +381,7 @@ python3 -m pytest -q \
 
 - [hci-live-validation-checklist-v1.md](docs/hci-live-validation-checklist-v1.md)
 - [run_hci_acceptance.sh](scripts/run_hci_acceptance.sh)
+- [local_ssh_lab.py](scripts/local_ssh_lab.py)
 
 ## 相关文档
 

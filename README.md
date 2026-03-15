@@ -253,6 +253,18 @@ A reference file is also available at [hci-minimal-config.json](examples/hci-min
 For remote troubleshooting, prefer structured `target` usage through the `exec` tool instead of asking the model to compose raw `ssh ...` command strings. Password-based SSH, when used, stays in process memory only and is not written to session history or audit details.
 In interactive CLI mode, if SSH authentication fails and the current target requires a password, HCIGuard can prompt once for the SSH password using hidden terminal input and retry in-process.
 
+For local loopback validation of the SSH path, use:
+
+```bash
+python3 scripts/local_ssh_lab.py start
+python3 scripts/local_ssh_lab.py status
+python3 scripts/local_ssh_lab.py stop
+```
+
+This starts two local targets under `/tmp/nanobot-ssh-lab`:
+- Pubkey SSH: `<your-user>@127.0.0.1:2322`
+- Password SSH: `nanobot@127.0.0.1:2323` with password `secret-123`
+
 ## Typical Workflow
 
 ### Local Troubleshooting
@@ -395,6 +407,7 @@ Live validation assets:
 
 - [hci-live-validation-checklist-v1.md](docs/hci-live-validation-checklist-v1.md)
 - [run_hci_acceptance.sh](scripts/run_hci_acceptance.sh)
+- [local_ssh_lab.py](scripts/local_ssh_lab.py)
 
 ## Documentation
 
