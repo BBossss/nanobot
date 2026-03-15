@@ -143,6 +143,8 @@ class AgentLoop:
             readonly_mode=self.exec_config.readonly_mode,
             allowed_commands=self.exec_config.allowed_commands,
             approval_file=self.exec_config.approval_file,
+            default_target=self.exec_config.default_target,
+            ssh_enabled=self.exec_config.ssh.enabled,
         ))
         diag_cfg = self.diagnostics_config
         if diag_cfg is None or diag_cfg.enabled:
@@ -228,6 +230,48 @@ class AgentLoop:
             return f'{tc.name}("{val[:40]}…")' if len(val) > 40 else f'{tc.name}("{val}")'
         return ", ".join(_fmt(tc) for tc in tool_calls)
 
+    @staticmethod
+    def _redact_sensitive_value(value):
+        """Recursively redact secret-bearing fields before logging or persistence."""
+        if isinstance(value, dict):
+            redacted = {}
+            for key, item in value.items():
+                if key == "ssh_password":
+                    redacted[key] = "***"
+                else:
+                    redacted[key] = AgentLoop._redact_sensitive_value(item)
+            return redacted
+        if isinstance(value, list):
+            return [AgentLoop._redact_sensitive_value(item) for item in value]
+        return value
+
+    @staticmethod
+    def _redact_tool_calls(tool_calls: list[dict] | None) -> list[dict] | None:
+        """Redact secrets inside OpenAI-format tool call payloads."""
+        if not tool_calls:
+            return tool_calls
+
+        redacted = []
+        for call in tool_calls:
+            entry = dict(call)
+            fn = dict(entry.get("function") or {})
+            args = fn.get("arguments")
+            if isinstance(args, str):
+                try:
+                    parsed = json.loads(args)
+                except Exception:
+                    parsed = None
+                if isinstance(parsed, dict):
+                    fn["arguments"] = json.dumps(
+                        AgentLoop._redact_sensitive_value(parsed),
+                        ensure_ascii=False,
+                    )
+            elif isinstance(args, dict):
+                fn["arguments"] = AgentLoop._redact_sensitive_value(args)
+            entry["function"] = fn
+            redacted.append(entry)
+        return redacted
+
     async def _run_agent_loop(
         self,
         initial_messages: list[dict],
@@ -264,7 +308,10 @@ class AgentLoop:
                         "type": "function",
                         "function": {
                             "name": tc.name,
-                            "arguments": json.dumps(tc.arguments, ensure_ascii=False)
+                            "arguments": json.dumps(
+                                self._redact_sensitive_value(tc.arguments),
+                                ensure_ascii=False,
+                            )
                         }
                     }
                     for tc in response.tool_calls
@@ -277,7 +324,10 @@ class AgentLoop:
 
                 for tool_call in response.tool_calls:
                     tools_used.append(tool_call.name)
-                    args_str = json.dumps(tool_call.arguments, ensure_ascii=False)
+                    args_str = json.dumps(
+                        self._redact_sensitive_value(tool_call.arguments),
+                        ensure_ascii=False,
+                    )
                     logger.info("Tool call: {}({})", tool_call.name, args_str[:200])
                     result = await self.tools.execute(tool_call.name, tool_call.arguments)
                     messages = self.context.add_tool_result(
@@ -564,6 +614,8 @@ class AgentLoop:
         from datetime import datetime
         for m in messages[skip:]:
             entry = dict(m)
+            if "tool_calls" in entry:
+                entry["tool_calls"] = self._redact_tool_calls(entry.get("tool_calls"))
             role, content = entry.get("role"), entry.get("content")
             if role == "assistant" and not content and not entry.get("tool_calls"):
                 continue  # skip empty assistant messages — they poison session context

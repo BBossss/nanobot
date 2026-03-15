@@ -1,6 +1,9 @@
+import json
+
 from nanobot.agent.context import ContextBuilder
 from nanobot.agent.loop import AgentLoop
 from nanobot.session.manager import Session
+from nanobot.session.manager import SessionManager
 
 
 def _mk_loop() -> AgentLoop:
@@ -39,3 +42,40 @@ def test_save_turn_keeps_image_placeholder_after_runtime_strip() -> None:
         skip=0,
     )
     assert session.messages[0]["content"] == [{"type": "text", "text": "[image]"}]
+
+
+def test_save_turn_redacts_ssh_password_from_tool_calls_before_persisting(tmp_path) -> None:
+    loop = _mk_loop()
+    session = Session(key="test:ssh-password")
+
+    loop._save_turn(
+        session,
+        [{
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "call_exec_1",
+                    "type": "function",
+                    "function": {
+                        "name": "exec",
+                        "arguments": json.dumps(
+                            {
+                                "command": "uptime",
+                                "target": "root@example-host",
+                                "ssh_password": "secret-123",
+                            },
+                            ensure_ascii=False,
+                        ),
+                    },
+                }
+            ],
+        }],
+        skip=0,
+    )
+
+    manager = SessionManager(tmp_path)
+    manager.save(session)
+    saved_text = manager._get_session_path(session.key).read_text(encoding="utf-8")
+
+    assert "secret-123" not in saved_text

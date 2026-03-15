@@ -5,6 +5,7 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
+from nanobot.agent.tools.shell import ExecTool
 from nanobot.cli.commands import app
 from nanobot.config.schema import Config
 from nanobot.providers.litellm_provider import LiteLLMProvider
@@ -128,3 +129,37 @@ def test_litellm_provider_canonicalizes_github_copilot_hyphen_prefix():
 def test_openai_codex_strip_prefix_supports_hyphen_and_underscore():
     assert _strip_model_prefix("openai-codex/gpt-5.1-codex") == "gpt-5.1-codex"
     assert _strip_model_prefix("openai_codex/gpt-5.1-codex") == "gpt-5.1-codex"
+
+
+def test_exec_config_round_trip_preserves_target_aware_settings():
+    config = Config.model_validate({
+        "tools": {
+            "exec": {
+                "defaultTarget": "root@example-host:2222",
+                "maxInvestigationRounds": 12,
+                "ssh": {
+                    "enabled": False,
+                    "port": 2200,
+                },
+            }
+        }
+    })
+
+    dumped = config.model_dump(by_alias=True)
+
+    assert dumped["tools"]["exec"]["defaultTarget"] == "root@example-host:2222"
+    assert dumped["tools"]["exec"]["maxInvestigationRounds"] == 12
+    assert dumped["tools"]["exec"]["ssh"]["enabled"] is False
+    assert dumped["tools"]["exec"]["ssh"]["port"] == 2200
+
+
+def test_exec_tool_schema_accepts_target_and_ssh_password():
+    tool = ExecTool()
+
+    errors = tool.validate_params({
+        "command": "uptime",
+        "target": "root@example-host",
+        "ssh_password": "secret-123",
+    })
+
+    assert errors == []

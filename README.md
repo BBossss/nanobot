@@ -42,6 +42,7 @@ Ask:
 - Record troubleshooting sessions as searchable cases
 - Run inspections, generate reports, and optionally convert findings into cases
 - Enforce readonly command execution with manual approvals and audit logging
+- Run `exec` against `target` values such as `local` or `user@host[:port]`
 - Support multiple model providers
 - Deliver through CLI, Telegram, and Mattermost
 
@@ -58,7 +59,7 @@ Current HCI-oriented capabilities:
 - Diagnostics: `diagnose_log_read`, `diagnose_log_search`, `diagnose_system_status`
 - Cases: record, import, search, show
 - Inspection: log scan, command/journal targets, report output, scheduled execution
-- Safety: readonly `exec`, approval file, unified command audit
+- Safety: readonly `exec`, `target`-aware SSH execution, approval file, unified command audit
 - Planning: structured troubleshooting plans
 - Skills: built-in HCI troubleshooting skills
 
@@ -164,7 +165,13 @@ Recommended first-run HCI settings:
   },
   "tools": {
     "exec": {
-      "readonlyMode": true
+      "readonlyMode": true,
+      "defaultTarget": "local",
+      "maxInvestigationRounds": 8,
+      "ssh": {
+        "enabled": true,
+        "port": 22
+      }
     },
     "diagnostics": {
       "enabled": true
@@ -222,8 +229,13 @@ Example:
   "tools": {
     "exec": {
       "readonlyMode": true,
+      "defaultTarget": "local",
       "allowedCommands": ["ls", "cat", "grep", "journalctl", "systemctl"],
-      "approvalFile": "~/.nanobot/workspace/approvals/exec_allow.json"
+      "approvalFile": "~/.nanobot/workspace/approvals/exec_allow.json",
+      "ssh": {
+        "enabled": true,
+        "port": 22
+      }
     },
     "diagnostics": {
       "enabled": true,
@@ -237,6 +249,8 @@ Example:
 ```
 
 A reference file is also available at [hci-minimal-config.json](examples/hci-minimal-config.json).
+
+For remote troubleshooting, prefer structured `target` usage through the `exec` tool instead of asking the model to compose raw `ssh ...` command strings. Password-based SSH, when used, stays in process memory only and is not written to session history or audit details.
 
 ## Typical Workflow
 

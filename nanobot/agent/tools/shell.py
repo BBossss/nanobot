@@ -2,10 +2,17 @@
 
 import asyncio
 import os
+import shutil
 from pathlib import Path
 from typing import Any
 
 from nanobot.agent.tools.base import Tool
+from nanobot.agent.tools.exec_transport import (
+    ExecTarget,
+    build_ssh_command,
+    is_raw_ssh_command,
+    parse_exec_target,
+)
 from nanobot.security.audit import CommandAuditLogger
 from nanobot.security.command_guard import (
     DEFAULT_DENY_PATTERNS,
@@ -30,6 +37,8 @@ class ExecTool(Tool):
         readonly_mode: bool = False,
         allowed_commands: list[str] | None = None,
         approval_file: str | None = None,
+        default_target: str = "local",
+        ssh_enabled: bool = True,
     ):
         self.timeout = timeout
         self.working_dir = working_dir
@@ -40,6 +49,8 @@ class ExecTool(Tool):
         self.readonly_mode = readonly_mode
         self.allowed_commands = {c.strip().lower() for c in (allowed_commands or []) if c.strip()}
         self.approval_file = Path(approval_file).expanduser() if approval_file else None
+        self.default_target = default_target
+        self.ssh_enabled = ssh_enabled
         self.audit = CommandAuditLogger(self.working_dir or os.getcwd())
 
     @property
@@ -62,13 +73,41 @@ class ExecTool(Tool):
                 "working_dir": {
                     "type": "string",
                     "description": "Optional working directory for the command"
-                }
+                },
+                "target": {
+                    "type": "string",
+                    "description": "Execution target. Use 'local' for the current machine or 'user@host[:port]' for SSH."
+                },
+                "ssh_password": {
+                    "type": "string",
+                    "description": "Optional SSH password for password-based login. This value is kept in process memory only."
+                },
             },
             "required": ["command"]
         }
     
-    async def execute(self, command: str, working_dir: str | None = None, **kwargs: Any) -> str:
+    async def execute(
+        self,
+        command: str,
+        working_dir: str | None = None,
+        target: str | None = None,
+        ssh_password: str | None = None,
+        **kwargs: Any,
+    ) -> str:
         cwd = working_dir or self.working_dir or os.getcwd()
+        exec_target = parse_exec_target(target or self.default_target)
+        target_label = target or self.default_target
+        if exec_target.kind == "local" and is_raw_ssh_command(command):
+            err = "Error: Raw ssh commands are not allowed here. Use target='user@host[:port]' with a normal command instead."
+            self.audit.record(
+                source="exec",
+                command=command,
+                status="blocked",
+                cwd=cwd,
+                detail=err,
+                metadata={"target": target_label, "transport": exec_target.kind},
+            )
+            return err
         guard_error = self._guard_command(command, cwd)
         if guard_error:
             self.audit.record(
@@ -77,71 +116,189 @@ class ExecTool(Tool):
                 status="blocked",
                 cwd=cwd,
                 detail=guard_error,
+                metadata={"target": target_label, "transport": exec_target.kind},
             )
             return guard_error
         
         env = os.environ.copy()
         if self.path_append:
             env["PATH"] = env.get("PATH", "") + os.pathsep + self.path_append
+        if ssh_password:
+            env["NANOBOT_SSH_PASSWORD"] = ssh_password
 
         try:
-            process = await asyncio.create_subprocess_shell(
-                command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-                cwd=cwd,
-                env=env,
-            )
-            
-            try:
-                stdout, stderr = await asyncio.wait_for(
-                    process.communicate(),
-                    timeout=self.timeout
+            if exec_target.kind == "local":
+                result, status = await self._run_local_command(
+                    command=command,
+                    cwd=cwd,
+                    timeout=self.timeout,
+                    env=env,
                 )
-            except asyncio.TimeoutError:
-                process.kill()
-                # Wait for the process to fully terminate so pipes are
-                # drained and file descriptors are released.
-                try:
-                    await asyncio.wait_for(process.wait(), timeout=5.0)
-                except asyncio.TimeoutError:
-                    pass
-                err = f"Error: Command timed out after {self.timeout} seconds"
-                self.audit.record(source="exec", command=command, status="timeout", cwd=cwd, detail=err)
-                return err
-            
-            output_parts = []
-            
-            if stdout:
-                output_parts.append(stdout.decode("utf-8", errors="replace"))
-            
-            if stderr:
-                stderr_text = stderr.decode("utf-8", errors="replace")
-                if stderr_text.strip():
-                    output_parts.append(f"STDERR:\n{stderr_text}")
-            
-            if process.returncode != 0:
-                output_parts.append(f"\nExit code: {process.returncode}")
-            
-            result = "\n".join(output_parts) if output_parts else "(no output)"
-            
-            # Truncate very long output
-            max_len = 10000
-            if len(result) > max_len:
-                result = result[:max_len] + f"\n... (truncated, {len(result) - max_len} more chars)"
+            else:
+                if not self.ssh_enabled:
+                    result = "Error: SSH execution is disabled for exec."
+                    status = "blocked"
+                else:
+                    remote_result = await self._run_remote_command(
+                        target=exec_target,
+                        command=command,
+                        timeout=self.timeout,
+                        env=env,
+                    )
+                    if isinstance(remote_result, tuple):
+                        result, status = remote_result
+                    else:
+                        result = remote_result
+                        status = "error" if str(result).startswith("Error:") else "ok"
             self.audit.record(
                 source="exec",
                 command=command,
-                status="ok" if process.returncode == 0 else "error",
+                status=status,
                 cwd=cwd,
                 detail=result,
+                metadata={"target": target_label, "transport": exec_target.kind},
             )
             return result
             
         except Exception as e:
             err = f"Error executing command: {str(e)}"
-            self.audit.record(source="exec", command=command, status="error", cwd=cwd, detail=err)
+            self.audit.record(
+                source="exec",
+                command=command,
+                status="error",
+                cwd=cwd,
+                detail=err,
+                metadata={"target": target_label, "transport": exec_target.kind},
+            )
             return err
+
+    async def _run_local_command(
+        self,
+        *,
+        command: str,
+        cwd: str,
+        timeout: int,
+        env: dict[str, str],
+    ) -> tuple[str, str]:
+        process = await asyncio.create_subprocess_shell(
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            cwd=cwd,
+            env=env,
+        )
+        return await self._communicate_and_format(process=process, timeout=timeout)
+
+    async def _run_remote_command(
+        self,
+        *,
+        target: ExecTarget,
+        command: str,
+        timeout: int,
+        env: dict[str, str],
+    ) -> tuple[str, str]:
+        argv = build_ssh_command(target, command)
+        if env.get("NANOBOT_SSH_PASSWORD"):
+            if shutil.which("sshpass"):
+                argv = ["sshpass", "-e", *argv]
+            elif shutil.which("expect"):
+                return await self._run_remote_command_with_expect(
+                    target=target,
+                    command=command,
+                    timeout=timeout,
+                    env=env,
+                )
+            else:
+                return (
+                    "Error: Password SSH requires `sshpass` or `expect` to be installed on this machine.",
+                    "error",
+                )
+
+        process = await asyncio.create_subprocess_exec(
+            *argv,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env,
+        )
+        return await self._communicate_and_format(process=process, timeout=timeout)
+
+    async def _run_remote_command_with_expect(
+        self,
+        *,
+        target: ExecTarget,
+        command: str,
+        timeout: int,
+        env: dict[str, str],
+    ) -> tuple[str, str]:
+        expect_env = env.copy()
+        expect_env["NANOBOT_SSH_DEST"] = (
+            f"{target.username}@{target.host}" if target.username else target.host
+        )
+        expect_env["NANOBOT_SSH_PORT"] = str(target.port)
+        expect_env["NANOBOT_SSH_COMMAND"] = command
+        expect_env["NANOBOT_SSH_TIMEOUT"] = str(timeout)
+        script = r"""
+set timeout $env(NANOBOT_SSH_TIMEOUT)
+set password $env(NANOBOT_SSH_PASSWORD)
+spawn ssh -p $env(NANOBOT_SSH_PORT) $env(NANOBOT_SSH_DEST) $env(NANOBOT_SSH_COMMAND)
+expect {
+    -re ".*yes/no.*" { send "yes\r"; exp_continue }
+    -re ".*[Pp]assword:.*" { send "$password\r"; exp_continue }
+    eof
+}
+catch wait result
+set exit_code [lindex $result 3]
+exit $exit_code
+""".strip()
+        process = await asyncio.create_subprocess_exec(
+            "expect",
+            "-c",
+            script,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=expect_env,
+        )
+        return await self._communicate_and_format(process=process, timeout=timeout)
+
+    async def _communicate_and_format(
+        self,
+        *,
+        process: asyncio.subprocess.Process,
+        timeout: int,
+    ) -> tuple[str, str]:
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                process.communicate(),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            process.kill()
+            try:
+                await asyncio.wait_for(process.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                pass
+            return f"Error: Command timed out after {timeout} seconds", "timeout"
+
+        output_parts = []
+
+        if stdout:
+            output_parts.append(stdout.decode("utf-8", errors="replace"))
+
+        if stderr:
+            stderr_text = stderr.decode("utf-8", errors="replace")
+            if stderr_text.strip():
+                output_parts.append(f"STDERR:\n{stderr_text}")
+
+        if process.returncode != 0:
+            output_parts.append(f"\nExit code: {process.returncode}")
+
+        result = "\n".join(output_parts) if output_parts else "(no output)"
+
+        max_len = 10000
+        if len(result) > max_len:
+            result = result[:max_len] + f"\n... (truncated, {len(result) - max_len} more chars)"
+        status = "ok" if process.returncode == 0 else "error"
+        return result, status
 
     def _guard_command(self, command: str, cwd: str) -> str | None:
         """Best-effort safety guard for potentially destructive commands."""

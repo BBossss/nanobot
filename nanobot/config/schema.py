@@ -151,12 +151,21 @@ class WebToolsConfig(Base):
     search: WebSearchConfig = Field(default_factory=WebSearchConfig)
 
 
+class SSHExecConfig(Base):
+    """SSH execution configuration for the exec tool."""
+
+    enabled: bool = True
+    port: int = 22
+
+
 class ExecToolConfig(Base):
     """Shell exec tool configuration."""
 
     timeout: int = 60
     path_append: str = ""
     readonly_mode: bool = False
+    default_target: str = "local"
+    max_investigation_rounds: int = 8
     allowed_commands: list[str] = Field(default_factory=lambda: [
         "ls",
         "pwd",
@@ -188,6 +197,7 @@ class ExecToolConfig(Base):
         "kubectl",
     ])
     approval_file: str = "~/.nanobot/workspace/approvals/exec_allow.json"
+    ssh: SSHExecConfig = Field(default_factory=SSHExecConfig)
 
 
 class DiagnosticsToolConfig(Base):
