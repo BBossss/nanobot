@@ -75,3 +75,15 @@ def test_routed_skill_content_is_injected_when_requested(tmp_path) -> None:
     assert "### Skill: hci-troubleshooting" in prompt
     assert "### Skill: hci-case-summary" in prompt
     assert "# HCI Case Summary" in prompt
+
+
+def test_system_prompt_mentions_structured_remote_exec_rules(tmp_path) -> None:
+    workspace = _make_workspace(tmp_path)
+    builder = ContextBuilder(workspace)
+
+    prompt = builder.build_system_prompt()
+
+    assert "`target`" in prompt
+    assert "不要直接拼写原始 `ssh ...` 命令字符串" in prompt
+    assert "CLI" in prompt
+    assert "SSH 密码" in prompt

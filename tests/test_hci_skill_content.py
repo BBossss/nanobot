@@ -6,6 +6,10 @@ def test_hci_troubleshooting_skill_mentions_remote_readonly_rules() -> None:
     text = path.read_text(encoding="utf-8")
 
     assert "远程只读排查规则" in text
+    assert "`exec`" in text
+    assert "`target`" in text
+    assert "不要直接拼写 `ssh ...`" in text
+    assert "CLI" in text
     assert "目标主机" in text
     assert "明文密码" in text
     assert "信息收集规则" in text
@@ -21,6 +25,9 @@ def test_hci_storage_network_sop_mentions_remote_checks() -> None:
     text = path.read_text(encoding="utf-8")
 
     assert "远程专项检查规则" in text
+    assert "`exec`" in text
+    assert "`target`" in text
+    assert "不要直接拼写 `ssh ...`" in text
     assert "目标主机" in text
     assert "与其他节点" in text
 
