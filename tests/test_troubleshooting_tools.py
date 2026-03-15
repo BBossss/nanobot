@@ -1,9 +1,14 @@
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from nanobot.agent.loop import AgentLoop
-from nanobot.agent.tools.troubleshooting import _build_target_runner
+from nanobot.agent.tools.troubleshooting import (
+    FindLogsTool,
+    ReadLogTailTool,
+    SearchLogTool,
+    _build_target_runner,
+)
 from nanobot.bus.queue import MessageBus
 from nanobot.config.schema import TroubleshootingToolConfig
 
@@ -46,3 +51,41 @@ async def test_target_runner_rejects_raw_ssh_command() -> None:
     result = await runner.run(command="ssh root@host-a uptime", target="local")
 
     assert "Use target=" in result
+
+
+@pytest.mark.asyncio
+async def test_find_logs_returns_bounded_matches(tmp_path) -> None:
+    tool = FindLogsTool(allowed_log_roots=[str(tmp_path)])
+    (tmp_path / "today").mkdir()
+    (tmp_path / "today" / "upgrade-server.log").write_text("ok\n", encoding="utf-8")
+
+    result = await tool.execute(keyword="upgrade", target="local")
+
+    assert "upgrade-server.log" in result
+
+
+@pytest.mark.asyncio
+async def test_read_log_tail_supports_remote_target(monkeypatch) -> None:
+    tool = ReadLogTailTool()
+    monkeypatch.setattr(
+        tool,
+        "_run_remote_command",
+        AsyncMock(return_value=("tail output", "", 0)),
+    )
+
+    result = await tool.execute(path="/sf/log/today/update.log", target="ops@host-a")
+
+    assert "tail output" in result
+
+
+@pytest.mark.asyncio
+async def test_search_log_returns_matches(tmp_path) -> None:
+    log_file = tmp_path / "app.log"
+    log_file.write_text("error one\nok\nerror two\n", encoding="utf-8")
+    tool = SearchLogTool(max_hits=10)
+    tool.allowed_log_roots = [tmp_path]
+
+    result = await tool.execute(path=str(log_file), pattern="error", target="local")
+
+    assert "error one" in result
+    assert "error two" in result
