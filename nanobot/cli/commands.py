@@ -132,6 +132,20 @@ async def _read_interactive_input_async() -> str:
         raise KeyboardInterrupt from exc
 
 
+async def _read_secret_input_async(target_label: str) -> str:
+    """Read a secret value from CLI without echo, used for SSH passwords."""
+    if _PROMPT_SESSION is None:
+        raise RuntimeError("Call _init_prompt_session() first")
+    try:
+        with patch_stdout():
+            return await _PROMPT_SESSION.prompt_async(
+                HTML(f"<b fg='ansiyellow'>SSH password for {target_label}:</b> "),
+                is_password=True,
+            )
+    except EOFError as exc:
+        raise KeyboardInterrupt from exc
+
+
 
 def version_callback(value: bool):
     if value:
@@ -505,6 +519,9 @@ def agent(
         mcp_servers=config.tools.mcp_servers,
         channels_config=config.channels,
     )
+    if exec_tool := agent_loop.tools.get("exec"):
+        if hasattr(exec_tool, "set_secret_prompt_callback"):
+            exec_tool.set_secret_prompt_callback(_read_secret_input_async)
 
     # Show spinner when logs are off (no output to miss); skip when logs are on
     def _thinking_ctx():

@@ -14,6 +14,35 @@ def test_exec_expect_script_escapes_password_prompt_pattern() -> None:
     assert r".*\[Pp\]assword:.*" in script
 
 
+@pytest.mark.asyncio
+async def test_exec_prompts_for_ssh_password_after_auth_failure(tmp_path, monkeypatch) -> None:
+    prompted = []
+    tool = ExecTool(working_dir=str(tmp_path))
+
+    async def fake_prompt(target_label: str) -> str | None:
+        prompted.append(target_label)
+        return "secret-123"
+
+    calls = []
+
+    async def fake_remote(*, target, command, timeout, env):
+        calls.append(dict(env))
+        if "NANOBOT_SSH_PASSWORD" not in env:
+            return "STDERR:\nPermission denied (publickey,password).\n\nExit code: 255", "error"
+        assert env["NANOBOT_SSH_PASSWORD"] == "secret-123"
+        return "ok-after-prompt", "ok"
+
+    tool.set_secret_prompt_callback(fake_prompt)
+    tool.set_context("cli", "direct")
+    monkeypatch.setattr(tool, "_run_remote_command", fake_remote)
+
+    result = await tool.execute(command="uptime", target="root@example-host")
+
+    assert result == "ok-after-prompt"
+    assert prompted == ["root@example-host"]
+    assert len(calls) == 2
+
+
 def test_exec_strips_expect_transport_noise_from_password_ssh_result() -> None:
     tool = ExecTool()
 

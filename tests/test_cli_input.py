@@ -39,6 +39,25 @@ async def test_read_interactive_input_async_handles_eof(mock_prompt_session):
         await commands._read_interactive_input_async()
 
 
+@pytest.mark.asyncio
+async def test_read_secret_input_async_uses_hidden_prompt(mock_prompt_session):
+    mock_prompt_session.prompt_async.return_value = "secret-123"
+
+    result = await commands._read_secret_input_async("root@example-host")
+
+    assert result == "secret-123"
+    _, kwargs = mock_prompt_session.prompt_async.call_args
+    assert kwargs["is_password"] is True
+
+
+@pytest.mark.asyncio
+async def test_read_secret_input_async_handles_eof(mock_prompt_session):
+    mock_prompt_session.prompt_async.side_effect = EOFError()
+
+    with pytest.raises(KeyboardInterrupt):
+        await commands._read_secret_input_async("root@example-host")
+
+
 def test_init_prompt_session_creates_session():
     """Test that _init_prompt_session initializes the global session."""
     # Ensure global is None before test

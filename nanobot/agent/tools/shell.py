@@ -5,7 +5,7 @@ import os
 import re
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Callable
 
 from nanobot.agent.tools.base import Tool
 from nanobot.agent.tools.exec_transport import (
@@ -52,7 +52,23 @@ class ExecTool(Tool):
         self.approval_file = Path(approval_file).expanduser() if approval_file else None
         self.default_target = default_target
         self.ssh_enabled = ssh_enabled
+        self._context_channel = "cli"
+        self._context_chat_id = "direct"
+        self._secret_prompt_callback: Callable[[str], Awaitable[str | None]] | None = None
+        self._ssh_password_cache: dict[str, str] = {}
         self.audit = CommandAuditLogger(self.working_dir or os.getcwd())
+
+    def set_context(self, channel: str, chat_id: str) -> None:
+        """Set current execution context for prompt routing."""
+        self._context_channel = channel
+        self._context_chat_id = chat_id
+
+    def set_secret_prompt_callback(
+        self,
+        callback: Callable[[str], Awaitable[str | None]] | None,
+    ) -> None:
+        """Set the callback used to request secrets during CLI troubleshooting."""
+        self._secret_prompt_callback = callback
 
     @property
     def name(self) -> str:
@@ -98,6 +114,7 @@ class ExecTool(Tool):
         cwd = working_dir or self.working_dir or os.getcwd()
         exec_target = parse_exec_target(target or self.default_target)
         target_label = target or self.default_target
+        effective_password = ssh_password or self._ssh_password_cache.get(target_label)
         if exec_target.kind == "local" and is_raw_ssh_command(command):
             err = "Error: Raw ssh commands are not allowed here. Use target='user@host[:port]' with a normal command instead."
             self.audit.record(
@@ -124,8 +141,8 @@ class ExecTool(Tool):
         env = os.environ.copy()
         if self.path_append:
             env["PATH"] = env.get("PATH", "") + os.pathsep + self.path_append
-        if ssh_password:
-            env["NANOBOT_SSH_PASSWORD"] = ssh_password
+        if effective_password:
+            env["NANOBOT_SSH_PASSWORD"] = effective_password
 
         try:
             if exec_target.kind == "local":
@@ -151,6 +168,28 @@ class ExecTool(Tool):
                     else:
                         result = remote_result
                         status = "error" if str(result).startswith("Error:") else "ok"
+                    if self._should_prompt_for_ssh_password(
+                        target=exec_target,
+                        status=status,
+                        result=result,
+                        ssh_password=effective_password,
+                    ):
+                        prompted_password = await self._prompt_for_ssh_password(target_label)
+                        if prompted_password:
+                            self._ssh_password_cache[target_label] = prompted_password
+                            retry_env = env.copy()
+                            retry_env["NANOBOT_SSH_PASSWORD"] = prompted_password
+                            retry_result = await self._run_remote_command(
+                                target=exec_target,
+                                command=command,
+                                timeout=self.timeout,
+                                env=retry_env,
+                            )
+                            if isinstance(retry_result, tuple):
+                                result, status = retry_result
+                            else:
+                                result = retry_result
+                                status = "error" if str(result).startswith("Error:") else "ok"
             self.audit.record(
                 source="exec",
                 command=command,
@@ -290,6 +329,43 @@ exit $exit_code
 
         compact = "\n".join(lines).strip()
         return compact or "(no output)"
+
+    def _should_prompt_for_ssh_password(
+        self,
+        *,
+        target: ExecTarget,
+        status: str,
+        result: str,
+        ssh_password: str | None,
+    ) -> bool:
+        """Return True when CLI should ask for an SSH password and retry once."""
+        if target.kind != "ssh":
+            return False
+        if ssh_password:
+            return False
+        if self._context_channel != "cli":
+            return False
+        if self._secret_prompt_callback is None:
+            return False
+        if status != "error":
+            return False
+
+        lower = result.lower()
+        auth_markers = (
+            "permission denied",
+            "publickey,password",
+            "publickey,gssapi",
+            "password authentication failed",
+            "keyboard-interactive",
+            "can't open /dev/tty",
+        )
+        return any(marker in lower for marker in auth_markers)
+
+    async def _prompt_for_ssh_password(self, target_label: str) -> str | None:
+        """Request an SSH password via the configured CLI callback."""
+        if self._secret_prompt_callback is None:
+            return None
+        return await self._secret_prompt_callback(target_label)
 
     async def _communicate_and_format(
         self,

@@ -251,6 +251,7 @@ Example:
 A reference file is also available at [hci-minimal-config.json](examples/hci-minimal-config.json).
 
 For remote troubleshooting, prefer structured `target` usage through the `exec` tool instead of asking the model to compose raw `ssh ...` command strings. Password-based SSH, when used, stays in process memory only and is not written to session history or audit details.
+In interactive CLI mode, if SSH authentication fails and the current target requires a password, HCIGuard can prompt once for the SSH password using hidden terminal input and retry in-process.
 
 ## Typical Workflow
 
