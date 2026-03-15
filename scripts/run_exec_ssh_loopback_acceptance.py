@@ -14,6 +14,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCAL_SSH_LAB = ROOT / "scripts" / "local_ssh_lab.py"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 
 def build_targets(username: str) -> dict[str, str]:
@@ -71,6 +73,11 @@ def run_direct_pubkey_ssh() -> None:
 async def run_exec_acceptance() -> dict[str, str]:
     """Verify ExecTool against both loopback SSH targets."""
     from nanobot.agent.tools.shell import ExecTool
+    from nanobot.agent.tools.troubleshooting import (
+        DiskSnapshotTool,
+        NetworkSnapshotTool,
+        ReadLogTailTool,
+    )
 
     tool = ExecTool(working_dir=str(ROOT))
     targets = build_targets(getpass.getuser())
@@ -83,10 +90,29 @@ async def run_exec_acceptance() -> dict[str, str]:
         target=targets["password"],
         ssh_password="secret-123",
     )
+    log_tool = ReadLogTailTool()
+    disk_tool = DiskSnapshotTool()
+    network_tool = NetworkSnapshotTool()
+    log_result = await _read_log_tail_with_fallback(log_tool, targets["pubkey"])
+    disk_result = await disk_tool.execute(target=targets["pubkey"])
+    network_result = await network_tool.execute(target=targets["pubkey"])
     return {
         "pubkey": pubkey_result.strip(),
         "password": password_result.strip(),
+        "log_tail": log_result.strip(),
+        "disk_snapshot": disk_result.strip(),
+        "network_snapshot": network_result.strip(),
     }
+
+
+async def _read_log_tail_with_fallback(tool: ReadLogTailTool, target: str) -> str:
+    """Try a few common log paths and return the first successful tail."""
+    candidates = ["/var/log/system.log", "/var/log/syslog", "/var/log/messages"]
+    for path in candidates:
+        result = await tool.execute(path=path, target=target, lines=20)
+        if not result.startswith("Error:"):
+            return result
+    return result
 
 
 def build_parser() -> argparse.ArgumentParser:
