@@ -2,6 +2,7 @@
 
 import asyncio
 import os
+import re
 import shutil
 from pathlib import Path
 from typing import Any
@@ -246,7 +247,8 @@ class ExecTool(Tool):
             stderr=asyncio.subprocess.PIPE,
             env=expect_env,
         )
-        return await self._communicate_and_format(process=process, timeout=timeout)
+        result, status = await self._communicate_and_format(process=process, timeout=timeout)
+        return self._strip_expect_transport_noise(result, target), status
 
     @staticmethod
     def _build_expect_ssh_script() -> str:
@@ -264,6 +266,27 @@ catch wait result
 set exit_code [lindex $result 3]
 exit $exit_code
 """.strip()
+
+    @staticmethod
+    def _strip_expect_transport_noise(result: str, target: ExecTarget) -> str:
+        """Remove expect/ssh prompt noise from password-SSH results."""
+        cleaned = result.replace("\r", "")
+        destination = f"{target.username}@{target.host}" if target.username else target.host
+        prompt_pattern = rf"^{re.escape(destination)}'s password:\s*$"
+        lines = []
+        for line in cleaned.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                lines.append("")
+                continue
+            if stripped.startswith("spawn ssh "):
+                continue
+            if re.match(prompt_pattern, stripped):
+                continue
+            lines.append(line)
+
+        compact = "\n".join(lines).strip()
+        return compact or "(no output)"
 
     async def _communicate_and_format(
         self,
