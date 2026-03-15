@@ -32,6 +32,7 @@ nanobot agent
 ## 能做什么
 
 - 使用受控、只读的诊断工具读取日志和检查主机状态
+- 提供高频只读排障调查动作：`find_logs`、`read_log_tail`、`search_log`、`service_status`、`process_snapshot`、`journal_tail`、`disk_snapshot`、`network_snapshot`、`find_recent_files`
 - 将排障过程沉淀为可检索案例
 - 执行巡检、生成报告，并在满足条件时自动转案例
 - 用只读执行、人工放通和统一审计控制风险
@@ -49,6 +50,7 @@ nanobot agent
 当前面向 HCI 的核心能力：
 
 - 诊断：`diagnose_log_read`、`diagnose_log_search`、`diagnose_system_status`
+- 排障：优先调查动作，必要时回退 `exec`
 - 案例：记录、导入、检索、查看
 - 巡检：日志扫描、`command/journal` 目标、报告输出、定时执行
 - 安全：只读 `exec`、审批文件、统一命令审计

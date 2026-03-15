@@ -39,6 +39,7 @@ Ask:
 ## What It Does
 
 - Read logs and inspect host state with controlled, read-only diagnostic tools
+- Use target-aware, read-only troubleshooting tools (`find_logs`, `read_log_tail`, `search_log`, `service_status`, `process_snapshot`, `journal_tail`, `disk_snapshot`, `network_snapshot`, `find_recent_files`)
 - Record troubleshooting sessions as searchable cases
 - Run inspections, generate reports, and optionally convert findings into cases
 - Enforce readonly command execution with manual approvals and audit logging
@@ -57,6 +58,7 @@ Current interaction entry points:
 Current HCI-oriented capabilities:
 
 - Diagnostics: `diagnose_log_read`, `diagnose_log_search`, `diagnose_system_status`
+- Troubleshooting: investigation-first flow with read-only tools, fallback to `exec` when needed
 - Cases: record, import, search, show
 - Inspection: log scan, command/journal targets, report output, scheduled execution
 - Safety: readonly `exec`, `target`-aware SSH execution, approval file, unified command audit
