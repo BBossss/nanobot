@@ -273,6 +273,7 @@ exit $exit_code
         cleaned = result.replace("\r", "")
         destination = f"{target.username}@{target.host}" if target.username else target.host
         prompt_pattern = rf"^{re.escape(destination)}'s password:\s*$"
+        closed_pattern = rf"^Connection to {re.escape(target.host)} closed by remote host\.\s*$"
         lines = []
         for line in cleaned.splitlines():
             stripped = line.strip()
@@ -282,6 +283,8 @@ exit $exit_code
             if stripped.startswith("spawn ssh "):
                 continue
             if re.match(prompt_pattern, stripped):
+                continue
+            if re.match(closed_pattern, stripped):
                 continue
             lines.append(line)
 

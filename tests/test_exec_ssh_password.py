@@ -20,12 +20,14 @@ def test_exec_strips_expect_transport_noise_from_password_ssh_result() -> None:
     cleaned = tool._strip_expect_transport_noise(
         "spawn ssh -p 2223 nanobot@127.0.0.1 echo ok\r\n\r\n"
         "nanobot@127.0.0.1's password: \r\n"
-        "ok-from-password-exectool\r\n",
+        "ok-from-password-exectool\r\n"
+        "Connection to 127.0.0.1 closed by remote host.\r\n",
         ExecTarget(kind="ssh", host="127.0.0.1", port=2223, username="nanobot"),
     )
 
     assert "spawn ssh" not in cleaned
     assert "password:" not in cleaned
+    assert "closed by remote host" not in cleaned
     assert "ok-from-password-exectool" in cleaned
 
 
