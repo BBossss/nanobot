@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Any
+from dataclasses import dataclass
+from typing import Any, Awaitable, Callable
+
+from nanobot.agent.tools.exec_transport import ExecTarget, is_raw_ssh_command, parse_exec_target
 
 from nanobot.agent.tools.base import Tool
 
@@ -12,6 +15,47 @@ class _BaseTroubleshootingTool(Tool):
 
     async def execute(self, **kwargs: Any) -> str:
         return "Error: Tool not implemented yet."
+
+
+@dataclass(frozen=True)
+class TargetCommandRunner:
+    """Minimal target-aware runner for troubleshooting tools."""
+
+    default_target: str
+    ssh_enabled: bool
+    run_local: Callable[..., Awaitable[str]]
+    run_remote: Callable[..., Awaitable[str]]
+
+    def parse_target(self, target: str | None) -> ExecTarget:
+        return parse_exec_target(target or self.default_target)
+
+    async def run(self, *, command: str, target: str | None = None, **kwargs: Any) -> str:
+        exec_target = self.parse_target(target)
+        if exec_target.kind == "local" and is_raw_ssh_command(command):
+            return (
+                "Error: Raw ssh commands are not allowed here. Use target='user@host[:port]' "
+                "with a normal command instead."
+            )
+        if exec_target.kind == "local":
+            return await self.run_local(command=command, **kwargs)
+        if not self.ssh_enabled:
+            return "Error: SSH execution is disabled for troubleshooting tools."
+        return await self.run_remote(target=exec_target, command=command, **kwargs)
+
+
+def _build_target_runner(*, default_target: str, ssh_enabled: bool) -> TargetCommandRunner:
+    async def _run_local_stub(**kwargs: Any) -> str:
+        return "Error: Tool not implemented yet."
+
+    async def _run_remote_stub(**kwargs: Any) -> str:
+        return "Error: Tool not implemented yet."
+
+    return TargetCommandRunner(
+        default_target=default_target,
+        ssh_enabled=ssh_enabled,
+        run_local=_run_local_stub,
+        run_remote=_run_remote_stub,
+    )
 
 
 class FindLogsTool(_BaseTroubleshootingTool):
