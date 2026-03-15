@@ -237,19 +237,7 @@ class ExecTool(Tool):
         expect_env["NANOBOT_SSH_PORT"] = str(target.port)
         expect_env["NANOBOT_SSH_COMMAND"] = command
         expect_env["NANOBOT_SSH_TIMEOUT"] = str(timeout)
-        script = r"""
-set timeout $env(NANOBOT_SSH_TIMEOUT)
-set password $env(NANOBOT_SSH_PASSWORD)
-spawn ssh -p $env(NANOBOT_SSH_PORT) $env(NANOBOT_SSH_DEST) $env(NANOBOT_SSH_COMMAND)
-expect {
-    -re ".*yes/no.*" { send "yes\r"; exp_continue }
-    -re ".*[Pp]assword:.*" { send "$password\r"; exp_continue }
-    eof
-}
-catch wait result
-set exit_code [lindex $result 3]
-exit $exit_code
-""".strip()
+        script = self._build_expect_ssh_script()
         process = await asyncio.create_subprocess_exec(
             "expect",
             "-c",
@@ -259,6 +247,23 @@ exit $exit_code
             env=expect_env,
         )
         return await self._communicate_and_format(process=process, timeout=timeout)
+
+    @staticmethod
+    def _build_expect_ssh_script() -> str:
+        """Build the expect script used for password-based SSH."""
+        return r"""
+set timeout $env(NANOBOT_SSH_TIMEOUT)
+set password $env(NANOBOT_SSH_PASSWORD)
+spawn ssh -p $env(NANOBOT_SSH_PORT) $env(NANOBOT_SSH_DEST) $env(NANOBOT_SSH_COMMAND)
+expect {
+    -re ".*yes/no.*" { send "yes\r"; exp_continue }
+    -re ".*\[Pp\]assword:.*" { send "$password\r"; exp_continue }
+    eof
+}
+catch wait result
+set exit_code [lindex $result 3]
+exit $exit_code
+""".strip()
 
     async def _communicate_and_format(
         self,

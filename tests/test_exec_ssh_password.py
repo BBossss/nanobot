@@ -5,6 +5,14 @@ import pytest
 from nanobot.agent.tools.shell import ExecTool
 
 
+def test_exec_expect_script_escapes_password_prompt_pattern() -> None:
+    tool = ExecTool()
+
+    script = tool._build_expect_ssh_script()
+
+    assert r".*\[Pp\]assword:.*" in script
+
+
 @pytest.mark.asyncio
 async def test_exec_remote_password_is_not_echoed_in_result(tmp_path, monkeypatch) -> None:
     monkeypatch.delenv("NANOBOT_SSH_PASSWORD", raising=False)
