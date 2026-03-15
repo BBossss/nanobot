@@ -243,6 +243,12 @@ python3 scripts/local_ssh_lab.py stop
 - 公钥 SSH：`<你的用户名>@127.0.0.1:2322`
 - 密码 SSH：`nanobot@127.0.0.1:2323`，密码是 `secret-123`
 
+如果你要一键跑完整回环验收，可以执行：
+
+```bash
+python3 scripts/run_exec_ssh_loopback_acceptance.py
+```
+
 ## 典型使用流程
 
 ### 本地排障
@@ -382,6 +388,7 @@ python3 -m pytest -q \
 - [hci-live-validation-checklist-v1.md](docs/hci-live-validation-checklist-v1.md)
 - [run_hci_acceptance.sh](scripts/run_hci_acceptance.sh)
 - [local_ssh_lab.py](scripts/local_ssh_lab.py)
+- [run_exec_ssh_loopback_acceptance.py](scripts/run_exec_ssh_loopback_acceptance.py)
 
 ## 相关文档
 

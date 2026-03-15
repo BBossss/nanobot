@@ -265,6 +265,12 @@ This starts two local targets under `/tmp/nanobot-ssh-lab`:
 - Pubkey SSH: `<your-user>@127.0.0.1:2322`
 - Password SSH: `nanobot@127.0.0.1:2323` with password `secret-123`
 
+You can also run the full loopback acceptance in one shot:
+
+```bash
+python3 scripts/run_exec_ssh_loopback_acceptance.py
+```
+
 ## Typical Workflow
 
 ### Local Troubleshooting
@@ -408,6 +414,7 @@ Live validation assets:
 - [hci-live-validation-checklist-v1.md](docs/hci-live-validation-checklist-v1.md)
 - [run_hci_acceptance.sh](scripts/run_hci_acceptance.sh)
 - [local_ssh_lab.py](scripts/local_ssh_lab.py)
+- [run_exec_ssh_loopback_acceptance.py](scripts/run_exec_ssh_loopback_acceptance.py)
 
 ## Documentation
 
