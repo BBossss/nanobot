@@ -47,6 +47,16 @@ metadata: {"nanobot":{"always":false}}
 3. 目标主机的服务/进程/磁盘/网络状态
 4. 与其他节点或控制机的差异点
 
+## 专项动作模板
+
+存储/磁盘异常：
+
+- `disk_snapshot` → `find_recent_files` → `search_log`
+
+网络异常：
+
+- `network_snapshot` → `process_snapshot` → `search_log`
+
 ## 输出要求
 
 - 当前症状

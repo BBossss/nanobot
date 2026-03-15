@@ -29,7 +29,11 @@ from nanobot.agent.tools.planning import PlanningTool
 from nanobot.agent.tools.registry import ToolRegistry
 from nanobot.agent.tools.shell import ExecTool
 from nanobot.agent.tools.troubleshooting import (
+    DiskSnapshotTool,
     FindLogsTool,
+    FindRecentFilesTool,
+    JournalTailTool,
+    NetworkSnapshotTool,
     ProcessSnapshotTool,
     ReadLogTailTool,
     SearchLogTool,
@@ -213,6 +217,16 @@ class AgentLoop:
             ))
             self.tools.register(ServiceStatusTool())
             self.tools.register(ProcessSnapshotTool())
+            self.tools.register(JournalTailTool(
+                default_lines=troubleshoot_cfg.default_tail_lines if troubleshoot_cfg else 200,
+                max_lines=troubleshoot_cfg.max_tail_lines if troubleshoot_cfg else 2000,
+            ))
+            self.tools.register(DiskSnapshotTool())
+            self.tools.register(NetworkSnapshotTool())
+            self.tools.register(FindRecentFilesTool(
+                allowed_log_roots=troubleshoot_cfg.allowed_log_roots if troubleshoot_cfg else None,
+                max_results=troubleshoot_cfg.max_recent_files if troubleshoot_cfg else 50,
+            ))
         self.tools.register(WebSearchTool(api_key=self.brave_api_key, proxy=self.web_proxy))
         self.tools.register(WebFetchTool(proxy=self.web_proxy))
         self.tools.register(SearchCasesTool(workspace=self.workspace, cases_path=self.cases_config.path if self.cases_config else None))

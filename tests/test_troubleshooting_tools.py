@@ -1,10 +1,16 @@
+import os
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from nanobot.agent.loop import AgentLoop
 from nanobot.agent.tools.troubleshooting import (
+    DiskSnapshotTool,
     FindLogsTool,
+    FindRecentFilesTool,
+    JournalTailTool,
+    NetworkSnapshotTool,
     ProcessSnapshotTool,
     ReadLogTailTool,
     SearchLogTool,
@@ -120,3 +126,60 @@ async def test_process_snapshot_returns_bounded_top_processes(monkeypatch) -> No
     result = await tool.execute(target="local")
 
     assert "proc list" in result
+
+
+@pytest.mark.asyncio
+async def test_journal_tail_accepts_service_and_target(monkeypatch) -> None:
+    tool = JournalTailTool()
+    monkeypatch.setattr(
+        tool,
+        "_run_remote_command",
+        AsyncMock(return_value=("journal lines", "", 0)),
+    )
+
+    result = await tool.execute(service="nginx", target="ops@host-a", lines=100)
+
+    assert "journal lines" in result
+
+
+@pytest.mark.asyncio
+async def test_disk_snapshot_returns_output(monkeypatch) -> None:
+    tool = DiskSnapshotTool()
+    monkeypatch.setattr(
+        tool,
+        "_run_process",
+        AsyncMock(return_value=("disk", "", 0)),
+    )
+
+    result = await tool.execute(target="local")
+
+    assert "disk" in result
+
+
+@pytest.mark.asyncio
+async def test_network_snapshot_returns_bounded_output(monkeypatch) -> None:
+    tool = NetworkSnapshotTool()
+    monkeypatch.setattr(
+        tool,
+        "_run_process",
+        AsyncMock(return_value=("network", "", 0)),
+    )
+
+    result = await tool.execute(target="local")
+
+    assert "network" in result
+
+
+@pytest.mark.asyncio
+async def test_find_recent_files_returns_matches(tmp_path) -> None:
+    tool = FindRecentFilesTool(allowed_log_roots=[str(tmp_path)])
+    recent = tmp_path / "recent.log"
+    stale = tmp_path / "stale.log"
+    recent.write_text("ok\n", encoding="utf-8")
+    stale.write_text("old\n", encoding="utf-8")
+    now = time.time()
+    os.utime(stale, (now - 3600 * 5, now - 3600 * 5))
+
+    result = await tool.execute(base_path=str(tmp_path), minutes=60, target="local")
+
+    assert "recent.log" in result

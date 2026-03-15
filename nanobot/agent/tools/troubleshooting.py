@@ -6,6 +6,7 @@ import asyncio
 import os
 import re
 import shlex
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -405,6 +406,247 @@ class SearchLogTool(_BaseTroubleshootingTool):
         if not out:
             return f"No matches for pattern '{pattern}' in {path}"
         return f"[target={target_label}] Found matches in {path}:\n" + out
+
+
+class JournalTailTool(_BaseTroubleshootingTool):
+    def __init__(
+        self,
+        *,
+        default_lines: int = 200,
+        max_lines: int = 2000,
+        timeout: int = 20,
+        default_target: str = "local",
+        ssh_enabled: bool = True,
+    ):
+        super().__init__(timeout=timeout, allowed_log_roots=["/var/log", "/opt/logs", "/sf/log"])
+        self.default_lines = default_lines
+        self.max_lines = max_lines
+        self.default_target = default_target
+        self.ssh_enabled = ssh_enabled
+
+    @property
+    def name(self) -> str:
+        return "journal_tail"
+
+    @property
+    def description(self) -> str:
+        return "Read recent journal lines for a systemd service."
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "service": {"type": "string", "minLength": 1},
+                "target": {"type": "string"},
+                "lines": {"type": "integer", "minimum": 1, "maximum": 2000},
+            },
+            "required": ["service"],
+        }
+
+    async def execute(
+        self,
+        service: str,
+        target: str | None = None,
+        lines: int | None = None,
+        **kwargs: Any,
+    ) -> str:
+        line_count = max(1, min(lines or self.default_lines, self.max_lines))
+        target_label = target or self.default_target
+        exec_target = parse_exec_target(target_label)
+        if exec_target.kind == "ssh" and not self.ssh_enabled:
+            return "Error: SSH execution is disabled for troubleshooting tools."
+
+        args = ["journalctl", "-u", service, "-n", str(line_count), "--no-pager"]
+        if exec_target.kind == "local":
+            out, err, code = await self._run_process(args)
+        else:
+            cmd = " ".join(shlex.quote(arg) for arg in args)
+            out, err, code = await self._run_remote_command(exec_target, cmd)
+        details = out or err or "(no output)"
+        return f"[target={target_label}] journal_tail({service})\n{details}"
+
+
+class DiskSnapshotTool(_BaseTroubleshootingTool):
+    def __init__(
+        self,
+        *,
+        timeout: int = 20,
+        default_target: str = "local",
+        ssh_enabled: bool = True,
+    ):
+        super().__init__(timeout=timeout, allowed_log_roots=["/var/log", "/opt/logs", "/sf/log"])
+        self.default_target = default_target
+        self.ssh_enabled = ssh_enabled
+
+    @property
+    def name(self) -> str:
+        return "disk_snapshot"
+
+    @property
+    def description(self) -> str:
+        return "Collect a readonly disk snapshot."
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "target": {"type": "string"},
+            },
+            "required": [],
+        }
+
+    async def execute(self, target: str | None = None, **kwargs: Any) -> str:
+        target_label = target or self.default_target
+        exec_target = parse_exec_target(target_label)
+        if exec_target.kind == "ssh" and not self.ssh_enabled:
+            return "Error: SSH execution is disabled for troubleshooting tools."
+
+        if exec_target.kind == "local":
+            out, err, _code = await self._run_process(["df", "-h"])
+        else:
+            out, err, _code = await self._run_remote_command(exec_target, "df -h")
+        details = out or err or "(no output)"
+        return f"[target={target_label}] disk_snapshot\n{details}"
+
+
+class NetworkSnapshotTool(_BaseTroubleshootingTool):
+    def __init__(
+        self,
+        *,
+        timeout: int = 20,
+        default_target: str = "local",
+        ssh_enabled: bool = True,
+    ):
+        super().__init__(timeout=timeout, allowed_log_roots=["/var/log", "/opt/logs", "/sf/log"])
+        self.default_target = default_target
+        self.ssh_enabled = ssh_enabled
+
+    @property
+    def name(self) -> str:
+        return "network_snapshot"
+
+    @property
+    def description(self) -> str:
+        return "Collect a readonly network snapshot."
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "target": {"type": "string"},
+            },
+            "required": [],
+        }
+
+    async def execute(self, target: str | None = None, **kwargs: Any) -> str:
+        target_label = target or self.default_target
+        exec_target = parse_exec_target(target_label)
+        if exec_target.kind == "ssh" and not self.ssh_enabled:
+            return "Error: SSH execution is disabled for troubleshooting tools."
+
+        cmd = "ss -tuln || netstat -an"
+        if exec_target.kind == "local":
+            out, err, _code = await self._run_process(["/bin/sh", "-c", cmd])
+        else:
+            out, err, _code = await self._run_remote_command(exec_target, cmd)
+        details = out or err or "(no output)"
+        return f"[target={target_label}] network_snapshot\n{details}"
+
+
+class FindRecentFilesTool(_BaseTroubleshootingTool):
+    def __init__(
+        self,
+        *,
+        timeout: int = 20,
+        default_target: str = "local",
+        ssh_enabled: bool = True,
+        allowed_log_roots: list[str | Path] | None = None,
+        max_results: int = 50,
+    ):
+        super().__init__(
+            timeout=timeout,
+            allowed_log_roots=allowed_log_roots or ["/var/log", "/opt/logs", "/sf/log"],
+        )
+        self.default_target = default_target
+        self.ssh_enabled = ssh_enabled
+        self.max_results = max_results
+
+    @property
+    def name(self) -> str:
+        return "find_recent_files"
+
+    @property
+    def description(self) -> str:
+        return "Find recent files under a base path within a time window."
+
+    @property
+    def parameters(self) -> dict[str, Any]:
+        return {
+            "type": "object",
+            "properties": {
+                "base_path": {"type": "string", "minLength": 1},
+                "minutes": {"type": "integer", "minimum": 1, "maximum": 1440},
+                "target": {"type": "string"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 200},
+            },
+            "required": ["base_path"],
+        }
+
+    async def execute(
+        self,
+        base_path: str,
+        target: str | None = None,
+        minutes: int = 60,
+        limit: int | None = None,
+        **kwargs: Any,
+    ) -> str:
+        target_label = target or self.default_target
+        exec_target = parse_exec_target(target_label)
+        if exec_target.kind == "ssh" and not self.ssh_enabled:
+            return "Error: SSH execution is disabled for troubleshooting tools."
+
+        cap = max(1, min(limit or self.max_results, self.max_results))
+        if not self._is_path_allowed_str(base_path):
+            allowed = ", ".join(str(p) for p in self.allowed_log_roots) or "(none)"
+            return f"Error: Path '{base_path}' is outside allowed log roots ({allowed})"
+
+        if exec_target.kind == "local":
+            root = Path(base_path).expanduser()
+            if not root.exists():
+                return f"Error: Path not found: {base_path}"
+            cutoff = (time.time() - minutes * 60)
+            matches: list[str] = []
+            for dirpath, _dirnames, filenames in os.walk(root):
+                for name in filenames:
+                    p = Path(dirpath) / name
+                    try:
+                        if p.stat().st_mtime >= cutoff:
+                            matches.append(str(p))
+                    except OSError:
+                        continue
+                    if len(matches) >= cap:
+                        break
+                if len(matches) >= cap:
+                    break
+        else:
+            cmd = (
+                f"find {shlex.quote(base_path)} -type f -mmin -{minutes} "
+                f"2>/dev/null | head -n {cap}"
+            )
+            out, err, code = await self._run_remote_command(exec_target, cmd)
+            if code != 0 and err:
+                return f"[target={target_label}] Error: {err}"
+            matches = [line for line in (out or "").splitlines() if line.strip()]
+
+        if not matches:
+            return f"[target={target_label}] No recent files found under {base_path}."
+        return (
+            f"[target={target_label}] find_recent_files({base_path}) returned {len(matches)} result(s):\n"
+            + "\n".join(matches[:cap])
+        )
 
 
 class ServiceStatusTool(_BaseTroubleshootingTool):

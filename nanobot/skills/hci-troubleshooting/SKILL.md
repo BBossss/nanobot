@@ -53,11 +53,26 @@ metadata: {"nanobot":{"always":true}}
 ## 工具使用建议
 
 - 优先使用高频排障动作：`find_logs`、`read_log_tail`、`search_log`、`service_status`、`process_snapshot`
+- 扩展动作按需使用：`journal_tail`、`disk_snapshot`、`network_snapshot`、`find_recent_files`
 - 当排障动作无法覆盖时，再使用 `diagnose_log_read`、`diagnose_log_search`、`diagnose_system_status`
 - 需要历史经验时再使用 `search_cases` / `get_case`
 - 需要结构化行动方案时使用 `plan`
 - 需要远程执行只读命令时，优先使用带 `target` 的 `exec`
 - 不要直接拼写 `ssh ...` 原始命令字符串
+
+## 高频排障模板
+
+服务异常：
+
+- `service_status` → `journal_tail` → `read_log_tail`
+
+磁盘异常：
+
+- `disk_snapshot` → `find_recent_files` → `search_log`
+
+网络异常：
+
+- `network_snapshot` → `process_snapshot` → `search_log`
 
 远程 `exec` 使用约束：
 

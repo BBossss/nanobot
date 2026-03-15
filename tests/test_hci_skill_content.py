@@ -23,6 +23,10 @@ def test_hci_troubleshooting_skill_mentions_remote_readonly_rules() -> None:
     assert "`search_log`" in text
     assert "`service_status`" in text
     assert "`process_snapshot`" in text
+    assert "`journal_tail`" in text
+    assert "`disk_snapshot`" in text
+    assert "`network_snapshot`" in text
+    assert "`find_recent_files`" in text
 
 
 def test_hci_storage_network_sop_mentions_remote_checks() -> None:
