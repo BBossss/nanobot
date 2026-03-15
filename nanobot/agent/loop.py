@@ -28,6 +28,13 @@ from nanobot.agent.tools.message import MessageTool
 from nanobot.agent.tools.planning import PlanningTool
 from nanobot.agent.tools.registry import ToolRegistry
 from nanobot.agent.tools.shell import ExecTool
+from nanobot.agent.tools.troubleshooting import (
+    FindLogsTool,
+    ProcessSnapshotTool,
+    ReadLogTailTool,
+    SearchLogTool,
+    ServiceStatusTool,
+)
 from nanobot.agent.tools.spawn import SpawnTool
 from nanobot.agent.tools.web import WebFetchTool, WebSearchTool
 from nanobot.bus.events import InboundMessage, OutboundMessage
@@ -39,7 +46,13 @@ from nanobot.providers.base import LLMProvider
 from nanobot.session.manager import Session, SessionManager
 
 if TYPE_CHECKING:
-    from nanobot.config.schema import CasesConfig, ChannelsConfig, DiagnosticsToolConfig, ExecToolConfig
+    from nanobot.config.schema import (
+        CasesConfig,
+        ChannelsConfig,
+        DiagnosticsToolConfig,
+        ExecToolConfig,
+        TroubleshootingToolConfig,
+    )
     from nanobot.cron.service import CronService
 
 
@@ -80,6 +93,7 @@ class AgentLoop:
         web_proxy: str | None = None,
         exec_config: ExecToolConfig | None = None,
         diagnostics_config: DiagnosticsToolConfig | None = None,
+        troubleshooting_config: TroubleshootingToolConfig | None = None,
         cases_config: CasesConfig | None = None,
         cron_service: CronService | None = None,
         restrict_to_workspace: bool = False,
@@ -103,6 +117,7 @@ class AgentLoop:
         self.exec_config = exec_config or ExecToolConfig()
         self.max_investigation_rounds = max(1, self.exec_config.max_investigation_rounds)
         self.diagnostics_config = diagnostics_config
+        self.troubleshooting_config = troubleshooting_config
         self.cases_config = cases_config
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
@@ -183,6 +198,21 @@ class AgentLoop:
                 max_search_hits=max_search_hits,
                 allowed_paths=allowed_paths,
             ))
+        troubleshoot_cfg = self.troubleshooting_config
+        if troubleshoot_cfg is None or troubleshoot_cfg.enabled:
+            self.tools.register(FindLogsTool(
+                allowed_log_roots=troubleshoot_cfg.allowed_log_roots if troubleshoot_cfg else None,
+                max_results=20,
+            ))
+            self.tools.register(ReadLogTailTool(
+                default_lines=troubleshoot_cfg.default_tail_lines if troubleshoot_cfg else 200,
+                max_lines=troubleshoot_cfg.max_tail_lines if troubleshoot_cfg else 2000,
+            ))
+            self.tools.register(SearchLogTool(
+                max_hits=troubleshoot_cfg.max_search_hits if troubleshoot_cfg else 100,
+            ))
+            self.tools.register(ServiceStatusTool())
+            self.tools.register(ProcessSnapshotTool())
         self.tools.register(WebSearchTool(api_key=self.brave_api_key, proxy=self.web_proxy))
         self.tools.register(WebFetchTool(proxy=self.web_proxy))
         self.tools.register(SearchCasesTool(workspace=self.workspace, cases_path=self.cases_config.path if self.cases_config else None))

@@ -210,6 +210,18 @@ class DiagnosticsToolConfig(Base):
     allowed_paths: list[str] = Field(default_factory=lambda: ["/var/log", "/opt/logs"])
 
 
+class TroubleshootingToolConfig(Base):
+    """Target-aware troubleshooting tool configuration."""
+
+    enabled: bool = True
+    timeout: int = 20
+    allowed_log_roots: list[str] = Field(default_factory=lambda: ["/var/log", "/opt/logs", "/sf/log"])
+    default_tail_lines: int = 200
+    max_tail_lines: int = 2000
+    max_search_hits: int = 100
+    max_recent_files: int = 50
+
+
 class MCPServerConfig(Base):
     """MCP server connection configuration (stdio or HTTP)."""
 
@@ -227,6 +239,7 @@ class ToolsConfig(Base):
     web: WebToolsConfig = Field(default_factory=WebToolsConfig)
     exec: ExecToolConfig = Field(default_factory=ExecToolConfig)
     diagnostics: DiagnosticsToolConfig = Field(default_factory=DiagnosticsToolConfig)
+    troubleshooting: TroubleshootingToolConfig = Field(default_factory=TroubleshootingToolConfig)
     restrict_to_workspace: bool = False  # If true, restrict all tool access to workspace directory
     mcp_servers: dict[str, MCPServerConfig] = Field(default_factory=dict)
 
