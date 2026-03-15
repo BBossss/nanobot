@@ -7,7 +7,7 @@ import json
 import re
 import weakref
 from contextlib import AsyncExitStack
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Awaitable, Callable
 
@@ -66,6 +66,7 @@ class InvestigationState:
 
     rounds: int = 0
     consecutive_stale_rounds: int = 0
+    checked_objects: set[str] = field(default_factory=set)
 
 
 class AgentLoop:
@@ -332,9 +333,40 @@ class AgentLoop:
         return json.dumps({"name": name, "arguments": arguments}, ensure_ascii=False, sort_keys=True)
 
     @staticmethod
-    def _result_signature(result: str) -> str:
+    def _result_signature(name: str, arguments: dict[str, Any], result: str) -> str:
         """Normalize tool output for evidence de-duplication."""
-        return result.strip()
+        target = arguments.get("target", "")
+        payload = {
+            "name": name,
+            "target": target,
+            "result": result.strip(),
+        }
+        return json.dumps(payload, ensure_ascii=False, sort_keys=True)
+
+    @staticmethod
+    def _object_signature(name: str, arguments: dict[str, Any]) -> str | None:
+        """Build a signature for repeated investigation objects."""
+        target = arguments.get("target", "")
+        obj = None
+        if name in {"read_log_tail", "search_log", "diagnose_log_read", "diagnose_log_search"}:
+            if path := arguments.get("path"):
+                obj = f"path:{path}"
+        elif name in {"service_status", "journal_tail"}:
+            if service := arguments.get("service"):
+                obj = f"service:{service}"
+        elif name in {"process_snapshot", "disk_snapshot", "network_snapshot", "diagnose_system_status"}:
+            scope = arguments.get("scope", "")
+            obj = f"snapshot:{name}:{scope}"
+        elif name == "find_logs":
+            if keyword := arguments.get("keyword"):
+                obj = f"keyword:{keyword}"
+        elif name == "find_recent_files":
+            if base_path := arguments.get("base_path"):
+                obj = f"path:{base_path}"
+        if not obj:
+            return None
+        payload = {"name": name, "target": target, "object": obj}
+        return json.dumps(payload, ensure_ascii=False, sort_keys=True)
 
     @staticmethod
     def _format_cached_tool_result(result: str) -> str:
@@ -375,6 +407,7 @@ class AgentLoop:
         tools_used: list[str] = []
         investigation = InvestigationState()
         tool_result_cache: dict[str, str] = {}
+        object_result_cache: dict[str, str] = {}
         seen_result_signatures: set[str] = set()
 
         while iteration < self.max_iterations:
@@ -426,12 +459,18 @@ class AgentLoop:
                     )
                     logger.info("Tool call: {}({})", tool_call.name, args_str[:200])
                     signature = self._tool_call_signature(tool_call.name, tool_call.arguments)
-                    if signature in tool_result_cache:
+                    object_signature = self._object_signature(tool_call.name, tool_call.arguments)
+                    if object_signature and object_signature in object_result_cache:
+                        result = self._format_cached_tool_result(object_result_cache[object_signature])
+                    elif signature in tool_result_cache:
                         result = self._format_cached_tool_result(tool_result_cache[signature])
                     else:
                         result = await self.tools.execute(tool_call.name, tool_call.arguments)
                         tool_result_cache[signature] = result
-                        result_sig = self._result_signature(result)
+                        if object_signature:
+                            object_result_cache[object_signature] = result
+                            investigation.checked_objects.add(object_signature)
+                        result_sig = self._result_signature(tool_call.name, tool_call.arguments, result)
                         if result_sig not in seen_result_signatures:
                             seen_result_signatures.add(result_sig)
                             round_has_new_evidence = True
