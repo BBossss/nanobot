@@ -408,6 +408,17 @@ class SearchLogTool(_BaseTroubleshootingTool):
 
 
 class ServiceStatusTool(_BaseTroubleshootingTool):
+    def __init__(
+        self,
+        *,
+        timeout: int = 20,
+        default_target: str = "local",
+        ssh_enabled: bool = True,
+    ):
+        super().__init__(timeout=timeout, allowed_log_roots=["/var/log", "/opt/logs", "/sf/log"])
+        self.default_target = default_target
+        self.ssh_enabled = ssh_enabled
+
     @property
     def name(self) -> str:
         return "service_status"
@@ -427,10 +438,50 @@ class ServiceStatusTool(_BaseTroubleshootingTool):
             "required": ["service"],
         }
 
+    async def execute(
+        self,
+        service: str,
+        target: str | None = None,
+        **kwargs: Any,
+    ) -> str:
+        target_label = target or self.default_target
+        exec_target = parse_exec_target(target_label)
+        if exec_target.kind == "ssh" and not self.ssh_enabled:
+            return "Error: SSH execution is disabled for troubleshooting tools."
+
+        systemctl_args = ["systemctl", "status", "--no-pager", service]
+        if exec_target.kind == "local":
+            out, err, code = await self._run_process(systemctl_args)
+        else:
+            cmd = " ".join(shlex.quote(arg) for arg in systemctl_args)
+            out, err, code = await self._run_remote_command(exec_target, cmd)
+
+        if code != 0:
+            fallback_cmd = (
+                f"ps -ef | grep -i -- {shlex.quote(service)} | grep -v grep"
+            )
+            if exec_target.kind == "local":
+                out, err, code = await self._run_process(["/bin/sh", "-c", fallback_cmd])
+            else:
+                out, err, code = await self._run_remote_command(exec_target, fallback_cmd)
+
+        details = out or err or "(no output)"
+        return f"[target={target_label}] service_status({service})\n{details}"
+
 
 class ProcessSnapshotTool(_BaseTroubleshootingTool):
-    def __init__(self, *, max_processes: int = 20):
+    def __init__(
+        self,
+        *,
+        max_processes: int = 20,
+        timeout: int = 20,
+        default_target: str = "local",
+        ssh_enabled: bool = True,
+    ):
+        super().__init__(timeout=timeout, allowed_log_roots=["/var/log", "/opt/logs", "/sf/log"])
         self.max_processes = max_processes
+        self.default_target = default_target
+        self.ssh_enabled = ssh_enabled
 
     @property
     def name(self) -> str:
@@ -450,3 +501,26 @@ class ProcessSnapshotTool(_BaseTroubleshootingTool):
             },
             "required": [],
         }
+
+    async def execute(
+        self,
+        target: str | None = None,
+        limit: int | None = None,
+        **kwargs: Any,
+    ) -> str:
+        target_label = target or self.default_target
+        exec_target = parse_exec_target(target_label)
+        if exec_target.kind == "ssh" and not self.ssh_enabled:
+            return "Error: SSH execution is disabled for troubleshooting tools."
+
+        cap = max(1, min(limit or self.max_processes, self.max_processes))
+        cmd = (
+            "ps -eo pid,ppid,comm,%cpu,%mem --sort=-%cpu | "
+            f"head -n {cap + 1}"
+        )
+        if exec_target.kind == "local":
+            out, err, _code = await self._run_process(["/bin/sh", "-c", cmd])
+        else:
+            out, err, _code = await self._run_remote_command(exec_target, cmd)
+        details = out or err or "(no output)"
+        return f"[target={target_label}] process_snapshot\n{details}"

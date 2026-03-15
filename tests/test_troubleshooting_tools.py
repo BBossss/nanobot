@@ -5,8 +5,10 @@ import pytest
 from nanobot.agent.loop import AgentLoop
 from nanobot.agent.tools.troubleshooting import (
     FindLogsTool,
+    ProcessSnapshotTool,
     ReadLogTailTool,
     SearchLogTool,
+    ServiceStatusTool,
     _build_target_runner,
 )
 from nanobot.bus.queue import MessageBus
@@ -89,3 +91,32 @@ async def test_search_log_returns_matches(tmp_path) -> None:
 
     assert "error one" in result
     assert "error two" in result
+
+
+@pytest.mark.asyncio
+async def test_service_status_checks_systemd_first(monkeypatch) -> None:
+    tool = ServiceStatusTool()
+    monkeypatch.setattr(
+        tool,
+        "_run_remote_command",
+        AsyncMock(return_value=("active (running)", "", 0)),
+    )
+
+    result = await tool.execute(service="nginx", target="ops@host-a")
+
+    assert "nginx" in result
+    assert "ops@host-a" in result
+
+
+@pytest.mark.asyncio
+async def test_process_snapshot_returns_bounded_top_processes(monkeypatch) -> None:
+    tool = ProcessSnapshotTool()
+    monkeypatch.setattr(
+        tool,
+        "_run_process",
+        AsyncMock(return_value=("proc list", "", 0)),
+    )
+
+    result = await tool.execute(target="local")
+
+    assert "proc list" in result

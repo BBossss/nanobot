@@ -52,7 +52,8 @@ metadata: {"nanobot":{"always":true}}
 
 ## 工具使用建议
 
-- 优先使用 `diagnose_log_read`、`diagnose_log_search`、`diagnose_system_status`
+- 优先使用高频排障动作：`find_logs`、`read_log_tail`、`search_log`、`service_status`、`process_snapshot`
+- 当排障动作无法覆盖时，再使用 `diagnose_log_read`、`diagnose_log_search`、`diagnose_system_status`
 - 需要历史经验时再使用 `search_cases` / `get_case`
 - 需要结构化行动方案时使用 `plan`
 - 需要远程执行只读命令时，优先使用带 `target` 的 `exec`

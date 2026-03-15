@@ -18,6 +18,11 @@ def test_hci_troubleshooting_skill_mentions_remote_readonly_rules() -> None:
     assert "多主机证据组织规则" in text
     assert "服务日志映射表使用规则" in text
     assert "references/service-log-map.md" in text
+    assert "`find_logs`" in text
+    assert "`read_log_tail`" in text
+    assert "`search_log`" in text
+    assert "`service_status`" in text
+    assert "`process_snapshot`" in text
 
 
 def test_hci_storage_network_sop_mentions_remote_checks() -> None:
