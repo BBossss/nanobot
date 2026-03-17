@@ -1,11 +1,47 @@
+<!--
+在外发或 fork 后，请一次性设置仓库变量：
+REPO_SLUG=<组织>/<仓库名>，例如 BBossss/nanobot 或你的实际仓库
+-->
+
 <div align="center">
   <img src="assets/hciguard-logo.svg" alt="HCIGuard" width="420">
   <h1>HCIGuard</h1>
+  <p>面向 HCI 的现场排障助手（基于 nanobot）。</p>
+  <p>默认只读、可审计、先调查后执行。</p>
 </div>
 
 [English](README.md) | 简体中文
+<p align="center">
+  <a href="https://github.com/${REPO_SLUG}/actions/workflows/ci.yml">
+    <img src="https://github.com/${REPO_SLUG}/actions/workflows/ci.yml/badge.svg" alt="CI">
+  </a>
+  <a href="https://codecov.io/gh/${REPO_SLUG}">
+    <img src="https://codecov.io/gh/${REPO_SLUG}/branch/main/graph/badge.svg" alt="Codecov">
+  </a>
+  <img src="https://img.shields.io/badge/coverage-coverage.xml%20in%20CI-blue" alt="Coverage">
+  <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
+</p>
 
-HCIGuard 是一个面向 HCI 场景的排障助手。它以原始 `nanobot` 运行时为底座，在此基础上增加了 HCI 定向的诊断、案例沉淀、巡检报告、安全控制和 IM 接入能力，用于更贴近现场运维的排障流程。
+HCIGuard 是一个面向 HCI 场景的排障助手。它以原始 `nanobot` 运行时为底座，在此基础上增加了 HCI 定向的诊断、案例沉淀、巡检报告、安全控制和 IM 接入能力，形成更贴近现场运维的排障流程。
+
+它的核心不是“更会聊天”，而是把排障工作流固化为可控的安全闭环：先调查、后执行、全链路可审计。
+
+**一句话定位：** HCIGuard 将 HCI 故障处理落在“先证据、后执行、全过程可追溯”闭环里。
+
+## HCIGuard 与通用 Agent 的差异
+
+| 对比维度 | 通用 Agent | HCIGuard |
+| --- | --- | --- |
+| 目标场景 | 通用聊天/任务自动化 | HCI 故障排障与现场响应 |
+| 执行方式 | 工具调用缺少主机上下文 | 目标感知执行（`local` / `user@host[:port]`） |
+| 安全边界 | 依赖提示词与单点策略 | 默认只读执行 + 审批文件 + 命令审计 |
+| 排障流程 | 单点问答为主 | 调查优先链路 + 案例与巡检痕迹 |
+| 团队协作 | 通常偏交互式单会话 | 案例库、巡检报告、IM 通道 |
+
+## 20 秒确认是否适配
+
+- 如果你的核心问题是“需要可控、可复盘的现场排障助手”，HCIGuard 更匹配。
+- 如果你要的是“写代码/通用文本 AI”，它不是主要目标。
 
 ## 10 分钟上手路径
 
@@ -28,6 +64,33 @@ nanobot agent
 ```text
 检查 /var/log/system.log 最近 200 行是否有 error，并给出结论
 ```
+
+## 端到端排障示例
+
+典型处理闭环如下：
+
+1. 发起排障请求：
+
+```text
+节点 storage-02 从今天 14:00 到 14:30 出现 I/O 延迟抖动，先给出定位结论。
+```
+
+2. HCIGuard 自动执行排障动作：
+
+- `find_logs` / `search_log` 读取存储与系统日志
+- `service_status`、`process_snapshot` 检查 kubelet、ceph 等关键服务
+- `journal_tail` 拉取最近故障相关事件
+
+3. 输出可复盘证据：
+
+- 对话中返回“关键证据 + 初步结论 + 下一步建议”
+- 自动落盘案例到 `~/.nanobot/workspace/notes/cases`
+- 若配置了巡检，异常会生成报告至 `~/.nanobot/workspace/reports/inspection`
+
+4. 执行动作确认：
+
+- 若需要高风险操作，HCIGuard 会先发起审批
+- 操作请求与执行结果持续写入 `~/.nanobot/workspace/audit/commands.jsonl`
 
 ## 能做什么
 
@@ -104,12 +167,34 @@ flowchart LR
 
 当前实现最适合单机或单节点诊断。跨主机统一编排还属于下一阶段能力，不是当前 V1 的完成项。
 
+## Roadmap
+
+当前基线（V1）能力：
+
+- 单机 / 单节点的 HCI 排障闭环
+- 调查优先的诊断流程
+- 受控执行审批与统一命令审计
+- Cases、巡检报告、IM 通道接入
+
+后续里程碑：
+
+- V1.1：支持多主机巡检目标，补齐主机级标记与路由
+- V1.2：实现跨主机巡检结果与事件时间线关联
+- V1.3：形成 case 生命周期（关联、交接、状态流转）
+- V1.4：支持基于时间窗的证据打包，支持复盘
+
+当前不在范围：
+
+- 自动化修复执行
+- 完整多 Agent 自动编排
+- 正式生产级 Web UI
+
 ## 安装
 
 从源码安装：
 
 ```bash
-git clone https://github.com/BBossss/nanobot.git
+git clone https://github.com/${REPO_SLUG}.git
 cd nanobot
 pip install -e .
 ```
@@ -369,6 +454,13 @@ nanobot approvals revoke --command "systemctl restart kubelet"
 - 仍需确认的风险或未知项
 
 ## 测试
+
+### 质量信号
+
+- CI：GitHub Actions 工作流覆盖 lint 与关键回归集（上方 badge）。
+- 覆盖率：CI 中执行 `python3 -m pytest --cov=nanobot --cov-report=xml tests`，产物为 `coverage.xml`。
+- 下方的聚焦回归集为本地与 CI 共用测试集合。
+- 私有仓库场景下如需保证 coverage badge 完整可见，请在 GitHub Secrets 配置 `CODECOV_TOKEN`。
 
 当前聚焦回归集：
 

@@ -1,9 +1,22 @@
+<!--
+Set once for your checkout before sharing:
+REPO_SLUG=<owner>/<repo>  e.g. BBossss/nanobot or your-fork/org-name
+-->
+
 <div align="center">
   <img src="assets/hciguard-logo.svg" alt="HCIGuard" width="420">
   <h1>HCIGuard</h1>
-  <p>HCI troubleshooting assistant built on top of nanobot.</p>
+  <p>Operational HCI troubleshooting assistant, built on nanobot.</p>
+  <p>Audit-first. Read-only by default. Investigation-first by design.</p>
   <p>
     <img src="https://img.shields.io/badge/python-%E2%89%A53.11-blue" alt="Python">
+    <a href="https://github.com/${REPO_SLUG}/actions/workflows/ci.yml">
+      <img src="https://github.com/${REPO_SLUG}/actions/workflows/ci.yml/badge.svg" alt="CI">
+    </a>
+    <a href="https://codecov.io/gh/${REPO_SLUG}">
+      <img src="https://codecov.io/gh/${REPO_SLUG}/branch/main/graph/badge.svg" alt="Codecov">
+    </a>
+    <img src="https://img.shields.io/badge/coverage-coverage.xml%20in%20CI-blue" alt="Coverage">
     <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
   </p>
 </div>
@@ -12,7 +25,26 @@
   English | <a href="README.zh-CN.md">简体中文</a>
 </p>
 
-HCIGuard is a focused troubleshooting assistant for HCI environments. It keeps the original nanobot runtime as the base, then adds HCI-oriented diagnostics, case recording, inspection workflows, safety controls, and IM integration for operational use.
+HCIGuard is a focused troubleshooting assistant for HCI environments. It keeps the original `nanobot` runtime as the base, then adds HCI-oriented diagnostics, case recording, inspection workflows, safety controls, and IM integration for operational use.
+
+What makes HCIGuard different is not chatbot behavior, but an operations-safe troubleshooting control plane: investigate first, execute second, keep every step auditable.
+
+**One-line positioning:** For HCI incidents, HCIGuard keeps work evidence-first, execution-approved, and fully auditable from start to finish.
+
+## HCIGuard vs Generic Agent Runtime
+
+| Dimension | Generic Agent Runtime | HCIGuard |
+| --- | --- | --- |
+| Primary use | General chat/task automation | HCI triage and on-call troubleshooting |
+| Execution model | Tool calls without target context | Target-aware execution (`local` and `user@host[:port]`) |
+| Default safety | Depends on prompt and tool policy | Readonly-by-default execution + approval file + command audit |
+| Operational loop | One-shot responses | Diagnosis-first sequence + case/inspection artifacts |
+| Team ops fit | Usually single conversation | Case store, inspection reports, IM channels |
+
+## 20-Second Positioning Check
+
+- If your pain is "I need a more controlled operations agent", HCIGuard is aligned.
+- If your pain is "I need a model to write code and browse the web", this is likely not the right fit.
 
 ## 10-Minute Path
 
@@ -35,6 +67,33 @@ Ask:
 ```text
 检查 /var/log/system.log 最近 200 行是否有 error，并给出结论
 ```
+
+## End-to-End Troubleshooting Example
+
+Incident flow (typical):
+
+1. Ask HCIGuard:
+
+```text
+节点 storage-02 从今天 14:00 到 14:30 出现 I/O 延迟抖动，先给出定位结论。
+```
+
+2. HCIGuard actions:
+
+- `find_logs` / `search_log` on system and storage logs
+- `service_status` and `process_snapshot` for `kubelet`, `ceph`, and related daemons
+- `journal_tail` on recent storage target errors
+
+3. Report artifacts:
+
+- Evidence-backed summary in chat
+- New case stored under `~/.nanobot/workspace/notes/cases`
+- Optional inspection report under `~/.nanobot/workspace/reports/inspection` when configured
+
+4. Next step:
+
+- If risky action is needed, HCIGuard requests approval before any privileged `exec`
+- Audit record written to `~/.nanobot/workspace/audit/commands.jsonl`
 
 ## What It Does
 
@@ -112,12 +171,34 @@ Current recommended deployment modes:
 
 Current implementation is strongest for single-host or single-node diagnostics. Cross-host orchestration is still a next-stage capability, not a finished V1 feature.
 
+## Roadmap
+
+Current baseline (V1):
+
+- Single-host/single-node HCI troubleshooting loop
+- Investigation-first workflow with read-only tools
+- Controlled execution approvals and unified command audit
+- Cases, inspection reports, and IM channel entrypoints
+
+Planned next milestones:
+
+- V1.1: Multi-host inspection targets with host-level tagging and routing
+- V1.2: Cross-host correlation for inspection findings and incident timelines
+- V1.3: Incident-to-case lifecycle (linking, handoff, and status transitions)
+- V1.4: Time-window aware evidence bundling for root-cause review
+
+Not in current scope:
+
+- Automatic remediation execution
+- Fully autonomous multi-agent coordination
+- Full production-grade web UI
+
 ## Install
 
 From source:
 
 ```bash
-git clone https://github.com/BBossss/nanobot.git
+git clone https://github.com/${REPO_SLUG}.git
 cd nanobot
 pip install -e .
 ```
@@ -395,6 +476,13 @@ Expected output style:
 - Risk or unknowns that still need confirmation
 
 ## Testing
+
+### Quality Signals
+
+- CI: GitHub Actions workflow with lint + focused regression checks (badge above).
+- Coverage: `python3 -m pytest --cov=nanobot --cov-report=xml tests` in CI, artifact at `coverage.xml`.
+- Focused tests list below is used by both local validation and CI.
+- If this repository is private, configure `CODECOV_TOKEN` in GitHub secrets to make the coverage badge fully functional.
 
 Run the current focused regression set:
 
