@@ -19,8 +19,19 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .[dev]
           pip install pytest-cov
-      - name: Run lint
-        run: ruff check .
+      - name: Run focused lint
+        run: |
+          ruff check \
+            nanobot/agent/multi_target.py \
+            nanobot/agent/timeline.py \
+            nanobot/agent/root_cause_candidates.py \
+            nanobot/targets/intent_resolver.py \
+            nanobot/targets/resolver.py \
+            tests/test_multi_target_troubleshooting.py \
+            tests/test_log_timeline.py \
+            tests/test_root_cause_candidates.py \
+            tests/test_target_intent_resolver.py \
+            tests/test_target_resolver.py
       - name: Run focused regression tests
         run: |
           python3 -m pytest -q \

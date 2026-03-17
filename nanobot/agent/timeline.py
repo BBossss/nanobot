@@ -6,7 +6,6 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 
-
 _TIMESTAMP_PATTERNS = (
     re.compile(r"(?P<ts>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})"),
     re.compile(r"(?P<ts>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})"),

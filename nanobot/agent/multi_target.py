@@ -13,7 +13,6 @@ from nanobot.agent.root_cause_candidates import (
 )
 from nanobot.agent.timeline import build_log_timeline, extract_log_events
 
-
 SUPPORTED_MULTI_TARGET_TOOLS = {
     "service_status",
     "process_snapshot",
