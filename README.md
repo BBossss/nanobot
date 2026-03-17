@@ -509,6 +509,7 @@ Live validation assets:
 ## Documentation
 
 - [HCIGuard feature guide](docs/hci-feature-guide-v1.md)
+- [V1.x roadmap](docs/roadmap-v1.x.md)
 - [Technical design](docs/technical-design-hci-troubleshooting-assistant-v1.md)
 - [Development status](docs/development-status-v1.md)
 - [Skill spec](docs/skill-spec-v1.md)

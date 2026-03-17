@@ -49,10 +49,12 @@ class InspectionPolicy:
         target_errors: list[str],
     ) -> str:
         finding_text = "\n".join(
-            f"- [{f['target']}:{f['line_no']}] {f['line'][:240]}" for f in findings[:80]
+            f"- [{f['target']}/{f.get('inspection_target', 'unknown')}:{f['line_no']}] {f['line'][:240]}"
+            for f in findings[:80]
         )
         target_text = "\n".join(
-            f"- {r.get('name', '')} ({r.get('kind', '')}): {len(r.get('matches', []))} matches"
+            f"- {r.get('target_id', 'local')}: {r.get('name', '')} ({r.get('kind', '')}) "
+            f"status={r.get('status', 'ok')} matches={len(r.get('matches', []))}"
             for r in target_results
         )
         error_text = "\n".join(f"- {e}" for e in target_errors) or "- none"
@@ -79,6 +81,7 @@ class InspectionPolicy:
             "",
             "## Summary",
             f"- Trigger: {trigger}",
+            f"- Time Window: {started.strftime('%Y-%m-%d %H:%M:%S')} (snapshot start)",
             f"- Targets: {len(target_results)}",
             f"- Findings: {len(findings)}",
             f"- Target Errors: {len(target_errors)}",
@@ -86,20 +89,42 @@ class InspectionPolicy:
             "## Target Overview",
         ]
         if target_results:
+            by_target: dict[str, list[dict[str, Any]]] = {}
+            for result in target_results:
+                target_id = result.get("target_id", "local")
+                by_target.setdefault(target_id, []).append(result)
+
+            for target_id in sorted(by_target.keys()):
+                entries = by_target[target_id]
+                host = entries[0].get("target_host", "local")
+                total_matches = sum(len(item.get("matches", [])) for item in entries)
+                statuses = ",".join(item.get("status", "ok") for item in entries)
+                lines.append(
+                    f"- {target_id} ({host}) probes={len(entries)} matches={total_matches} status={statuses}"
+                )
+        else:
+            lines.append("- No targets configured")
+
+        lines += ["", "## Per-Target Details"]
+        if target_results:
             for result in target_results:
                 lines.append(
-                    f"- {result.get('name', '')} [{result.get('kind', '')}] "
-                    f"matches={len(result.get('matches', []))}"
+                    f"- {result.get('target_id', 'local')} / {result.get('name', '')}"
+                    f" [{result.get('kind', '')}] status={result.get('status', 'ok')}"
+                    f" matches={len(result.get('matches', []))}"
                 )
                 if result.get("error"):
                     lines.append(f"  collector_error: {result['error']}")
         else:
-            lines.append("- No targets configured")
+            lines.append("- No per-target details")
 
         lines += ["", "## Matched Lines"]
         if findings:
             for finding in findings[:200]:
-                lines.append(f"- [{finding['target']}:{finding['line_no']}] {finding['line']}")
+                lines.append(
+                    f"- [{finding['target']}/{finding.get('inspection_target', 'unknown')}:"
+                    f"{finding['line_no']}] {finding['line']}"
+                )
         else:
             lines.append("- No matched lines")
 
@@ -131,12 +156,25 @@ class InspectionPolicy:
         report_path: str,
         llm_summary: str,
     ) -> InspectionCaseDraft:
+        target_ids = sorted({str(f.get("target", "")).strip() for f in findings if str(f.get("target", "")).strip()})
+        evidence_lines = []
+        for finding in findings[:20]:
+            target = finding.get("target", "unknown")
+            inspection_target = finding.get("inspection_target", "unknown")
+            line_no = finding.get("line_no", "?")
+            line = finding.get("line", "")
+            evidence_lines.append(f"[{target}/{inspection_target}:{line_no}] {line}")
+
+        target_part = f"targets: {', '.join(target_ids)}" if target_ids else "targets: none"
         return InspectionCaseDraft(
             title=f"Inspection report {started.strftime('%Y-%m-%d %H:%M')}",
             trigger=trigger,
             source="inspection",
-            summary=f"Inspection findings: {len(findings)}, target errors: {len(target_errors)}",
-            evidence=f"Report path: {report_path}\n\n" + "\n".join(f["line"] for f in findings[:20]),
+            summary=(
+                f"Inspection findings: {len(findings)}, target errors: {len(target_errors)}, "
+                f"target count: {len(target_ids)}"
+            ),
+            evidence=f"Report path: {report_path}\n{target_part}\n\n" + "\n".join(evidence_lines),
             conclusion=(llm_summary or "Please review report details.").strip()[:3000],
             suggestion="Prioritize high-frequency errors and verify affected components.",
             status="open" if findings else "resolved",

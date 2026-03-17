@@ -30,9 +30,13 @@ jobs:
             tests/test_case_record_mode.py \
             tests/test_cases.py \
             tests/test_inspection_service.py \
+            tests/test_inspection_multi_target.py \
+            tests/test_case_multi_target_evidence.py \
+            tests/test_audit_target_metadata.py \
             tests/test_exec_readonly_approval.py \
             tests/test_cron_inspection_tool.py \
-            tests/test_hci_skills.py
+            tests/test_hci_skills.py \
+            tests/test_target_resolver.py
       - name: Run coverage
         run: |
           python3 -m pytest --cov=nanobot --cov-report=xml tests

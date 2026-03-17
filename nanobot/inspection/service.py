@@ -9,11 +9,18 @@ from pathlib import Path
 from typing import Any
 
 from nanobot.cases.store import CaseStore
-from nanobot.config.schema import CasesConfig, ExecToolConfig, InspectionConfig, InspectionTargetConfig
+from nanobot.config.schema import (
+    CasesConfig,
+    ExecToolConfig,
+    InspectionConfig,
+    InspectionTargetConfig,
+    TargetingConfig,
+)
 from nanobot.policies.inspection import InspectionPolicy
 from nanobot.providers.base import LLMProvider
 from nanobot.security.audit import CommandAuditLogger
 from nanobot.security.command_guard import guard_command
+from nanobot.targets.resolver import ResolvedTarget, resolve_targets
 from nanobot.utils.helpers import ensure_dir
 
 
@@ -29,12 +36,14 @@ class InspectionService:
         model: str | None = None,
         cases: CasesConfig | None = None,
         exec_config: ExecToolConfig | None = None,
+        targeting: TargetingConfig | None = None,
     ):
         self.workspace = workspace
         self.config = inspection
         self.provider = provider
         self.model = model
         self.exec_config = exec_config or ExecToolConfig()
+        self.targeting = targeting
         self.audit = CommandAuditLogger(workspace)
         self._case_store = CaseStore(workspace, cases.path if cases else None)
         report_dir = Path(self.config.report_dir).expanduser()
@@ -43,7 +52,7 @@ class InspectionService:
     async def run(self, *, trigger: str = "manual") -> dict[str, Any]:
         """Run one inspection cycle and persist a markdown report."""
         started = datetime.now()
-        targets = [t for t in self.config.targets if t.enabled]
+        profiles = [t for t in self.config.targets if t.enabled]
         if not self.config.enabled:
             return {"status": "disabled", "targets": 0, "findings": 0, "report_path": ""}
 
@@ -51,12 +60,20 @@ class InspectionService:
         findings: list[dict[str, Any]] = []
         target_errors: list[str] = []
 
-        for target in targets:
-            result = await self._collect_target(target)
-            target_results.append(result)
-            findings.extend(result.get("matches", []))
-            if err := result.get("error"):
-                target_errors.append(f"{target.name}: {err}")
+        for profile in profiles:
+            resolved_targets = self._resolve_runtime_targets(profile)
+            for runtime_target in resolved_targets:
+                result = await self._collect_target(profile, runtime_target)
+                target_results.append(result)
+                findings.extend(result.get("matches", []))
+                if err := result.get("error"):
+                    target_errors.append(f"{runtime_target.id}/{profile.name}: {err}")
+
+        status_summary = {"ok": 0, "failed": 0, "skipped": 0}
+        for result in target_results:
+            status = result.get("status", "ok")
+            if status in status_summary:
+                status_summary[status] += 1
 
         llm_summary = await self._analyze_with_llm(findings, target_results, target_errors)
         report = self._render_report(
@@ -98,52 +115,152 @@ class InspectionService:
 
         return {
             "status": "ok",
-            "targets": len(targets),
+            "targets": len(target_results),
+            "profiles": len(profiles),
             "findings": len(findings),
             "target_errors": len(target_errors),
+            "target_status": status_summary,
             "report_path": str(report_path),
             "case_id": case_id,
         }
 
-    async def _collect_target(self, target: InspectionTargetConfig) -> dict[str, Any]:
-        if target.kind == "log_file":
-            return await self._collect_log_file(target)
-        if target.kind == "journal":
-            return await self._collect_journal(target)
-        if target.kind == "command":
-            return await self._collect_command(target)
-        return {"name": target.name, "kind": target.kind, "matches": [], "error": "unsupported target kind"}
+    def _resolve_runtime_targets(self, target: InspectionTargetConfig) -> list[ResolvedTarget]:
+        if self.targeting and self.targeting.targets:
+            resolved = resolve_targets(
+                self.targeting,
+                target_ids=target.target_ids or None,
+                group_names=target.target_groups or None,
+                label_all=target.target_label_all or None,
+                label_any=target.target_label_any or None,
+            )
+            if resolved:
+                return resolved
 
-    async def _collect_log_file(self, target: InspectionTargetConfig) -> dict[str, Any]:
+        return [ResolvedTarget(id="local", target="local", labels=tuple())]
+
+    async def _collect_target(
+        self,
+        target: InspectionTargetConfig,
+        runtime_target: ResolvedTarget,
+    ) -> dict[str, Any]:
+        if target.kind == "log_file":
+            return await self._collect_log_file(target, runtime_target)
+        if target.kind == "journal":
+            return await self._collect_journal(target, runtime_target)
+        if target.kind == "command":
+            return await self._collect_command(target, runtime_target)
+        return {
+            "name": target.name,
+            "kind": target.kind,
+            "target_id": runtime_target.id,
+            "target_host": runtime_target.target,
+            "status": "failed",
+            "matches": [],
+            "error": "unsupported target kind",
+        }
+
+    async def _collect_log_file(
+        self,
+        target: InspectionTargetConfig,
+        runtime_target: ResolvedTarget,
+    ) -> dict[str, Any]:
+        if runtime_target.target != "local":
+            return {
+                "name": target.name,
+                "kind": target.kind,
+                "target_id": runtime_target.id,
+                "target_host": runtime_target.target,
+                "status": "skipped",
+                "matches": [],
+                "error": "remote inspection for log_file is not supported in V1.1",
+            }
         path = Path(target.path).expanduser()
         if not path.exists():
-            return {"name": target.name, "kind": target.kind, "matches": [], "error": f"log file not found: {path}"}
+            return {
+                "name": target.name,
+                "kind": target.kind,
+                "target_id": runtime_target.id,
+                "target_host": runtime_target.target,
+                "status": "failed",
+                "matches": [],
+                "error": f"log file not found: {path}",
+            }
         text = path.read_text(encoding="utf-8", errors="replace")
         lines = text.splitlines()[-max(1, target.max_lines):]
         return {
             "name": target.name,
             "kind": target.kind,
-            "matches": self._filter_lines(lines, target),
+            "target_id": runtime_target.id,
+            "target_host": runtime_target.target,
+            "status": "ok",
+            "matches": self._filter_lines(lines, target, runtime_target),
             "error": "",
         }
 
-    async def _collect_journal(self, target: InspectionTargetConfig) -> dict[str, Any]:
+    async def _collect_journal(
+        self,
+        target: InspectionTargetConfig,
+        runtime_target: ResolvedTarget,
+    ) -> dict[str, Any]:
+        if runtime_target.target != "local":
+            return {
+                "name": target.name,
+                "kind": target.kind,
+                "target_id": runtime_target.id,
+                "target_host": runtime_target.target,
+                "status": "skipped",
+                "matches": [],
+                "error": "remote inspection for journal is not supported in V1.1",
+            }
         cmd = ["journalctl", "-n", str(max(1, target.max_lines)), "--no-pager"]
         if target.unit:
             cmd += ["-u", target.unit]
         out, err = await self._run_cmd(cmd)
         if err:
-            return {"name": target.name, "kind": target.kind, "matches": [], "error": err}
+            return {
+                "name": target.name,
+                "kind": target.kind,
+                "target_id": runtime_target.id,
+                "target_host": runtime_target.target,
+                "status": "failed",
+                "matches": [],
+                "error": err,
+            }
         return {
             "name": target.name,
             "kind": target.kind,
-            "matches": self._filter_lines(out.splitlines(), target),
+            "target_id": runtime_target.id,
+            "target_host": runtime_target.target,
+            "status": "ok",
+            "matches": self._filter_lines(out.splitlines(), target, runtime_target),
             "error": "",
         }
 
-    async def _collect_command(self, target: InspectionTargetConfig) -> dict[str, Any]:
+    async def _collect_command(
+        self,
+        target: InspectionTargetConfig,
+        runtime_target: ResolvedTarget,
+    ) -> dict[str, Any]:
+        if runtime_target.target != "local":
+            return {
+                "name": target.name,
+                "kind": target.kind,
+                "target_id": runtime_target.id,
+                "target_host": runtime_target.target,
+                "status": "skipped",
+                "matches": [],
+                "error": "remote inspection for command is not supported in V1.1",
+            }
         if not target.command.strip():
-            return {"name": target.name, "kind": target.kind, "matches": [], "error": "empty command"}
+            return {
+                "name": target.name,
+                "kind": target.kind,
+                "target_id": runtime_target.id,
+                "target_host": runtime_target.target,
+                "status": "failed",
+                "matches": [],
+                "error": "empty command",
+            }
         guard_error = guard_command(
             target.command,
             cwd=str(self.workspace),
@@ -158,9 +275,22 @@ class InspectionService:
                 status="blocked",
                 cwd=str(self.workspace),
                 detail=guard_error,
-                metadata={"target": target.name},
+                metadata={
+                    "target": target.name,
+                    "target_id": runtime_target.id,
+                    "executor": "inspection",
+                    "result": "blocked",
+                },
             )
-            return {"name": target.name, "kind": target.kind, "matches": [], "error": guard_error}
+            return {
+                "name": target.name,
+                "kind": target.kind,
+                "target_id": runtime_target.id,
+                "target_host": runtime_target.target,
+                "status": "failed",
+                "matches": [],
+                "error": guard_error,
+            }
         out, err = await self._run_cmd(shlex.split(target.command))
         self.audit.record(
             source="inspection.command",
@@ -168,15 +298,31 @@ class InspectionService:
             status="ok" if not err else "error",
             cwd=str(self.workspace),
             detail=(err or out),
-            metadata={"target": target.name},
+            metadata={
+                "target": target.name,
+                "target_id": runtime_target.id,
+                "executor": "inspection",
+                "result": "ok" if not err else "error",
+            },
         )
         if err:
-            return {"name": target.name, "kind": target.kind, "matches": [], "error": err}
+            return {
+                "name": target.name,
+                "kind": target.kind,
+                "target_id": runtime_target.id,
+                "target_host": runtime_target.target,
+                "status": "failed",
+                "matches": [],
+                "error": err,
+            }
         lines = out.splitlines()[-max(1, target.max_lines):]
         return {
             "name": target.name,
             "kind": target.kind,
-            "matches": self._filter_lines(lines, target),
+            "target_id": runtime_target.id,
+            "target_host": runtime_target.target,
+            "status": "ok",
+            "matches": self._filter_lines(lines, target, runtime_target),
             "error": "",
         }
 
@@ -200,7 +346,12 @@ class InspectionService:
         except Exception as e:  # pragma: no cover - unexpected runtime errors
             return "", str(e)
 
-    def _filter_lines(self, lines: list[str], target: InspectionTargetConfig) -> list[dict[str, Any]]:
+    def _filter_lines(
+        self,
+        lines: list[str],
+        target: InspectionTargetConfig,
+        runtime_target: ResolvedTarget,
+    ) -> list[dict[str, Any]]:
         keywords = InspectionPolicy.keywords_for(target.keywords)
         matches: list[dict[str, Any]] = []
         max_matches = max(1, target.max_matches)
@@ -209,7 +360,14 @@ class InspectionService:
             line_l = line.lower()
             if keywords and not any(kw in line_l for kw in keywords):
                 continue
-            matches.append({"line_no": idx, "line": line, "target": target.name})
+            matches.append(
+                {
+                    "line_no": idx,
+                    "line": line,
+                    "target": runtime_target.id,
+                    "inspection_target": target.name,
+                }
+            )
             if len(matches) >= max_matches:
                 break
         return matches

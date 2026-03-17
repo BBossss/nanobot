@@ -2,7 +2,7 @@
 
 from pathlib import Path
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
 from pydantic_settings import BaseSettings
 
@@ -126,6 +126,10 @@ class InspectionTargetConfig(Base):
     keywords: list[str] = Field(default_factory=list)
     max_lines: int = 500
     max_matches: int = 50
+    target_ids: list[str] = Field(default_factory=list)
+    target_groups: list[str] = Field(default_factory=list)
+    target_label_all: list[str] = Field(default_factory=list)
+    target_label_any: list[str] = Field(default_factory=list)
 
 
 class InspectionConfig(Base):
@@ -135,6 +139,56 @@ class InspectionConfig(Base):
     report_dir: str = "~/.nanobot/workspace/reports/inspection"
     generate_case_on: Literal["never", "error", "always"] = "error"
     targets: list[InspectionTargetConfig] = Field(default_factory=list)
+
+
+class TargetDefinitionConfig(Base):
+    """Reusable target definition for multi-target workflows."""
+
+    id: str = ""
+    target: str = "local"
+    labels: list[str] = Field(default_factory=list)
+    enabled: bool = True
+
+
+class TargetGroupConfig(Base):
+    """Named group of target IDs."""
+
+    name: str = ""
+    targets: list[str] = Field(default_factory=list)
+
+
+class TargetingConfig(Base):
+    """Multi-target configuration for inspection/troubleshooting."""
+
+    targets: list[TargetDefinitionConfig] = Field(default_factory=list)
+    groups: list[TargetGroupConfig] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_references(self) -> "TargetingConfig":
+        """Validate uniqueness and group references."""
+        seen_ids: set[str] = set()
+        for target in self.targets:
+            target_id = target.id.strip()
+            if not target_id:
+                raise ValueError("target.id must not be empty")
+            if target_id in seen_ids:
+                raise ValueError(f"duplicate target id: {target_id}")
+            seen_ids.add(target_id)
+
+        seen_groups: set[str] = set()
+        for group in self.groups:
+            group_name = group.name.strip()
+            if not group_name:
+                raise ValueError("group.name must not be empty")
+            if group_name in seen_groups:
+                raise ValueError(f"duplicate group name: {group_name}")
+            seen_groups.add(group_name)
+            for target_id in group.targets:
+                if target_id not in seen_ids:
+                    raise ValueError(
+                        f"group {group_name!r} references unknown target id {target_id!r}"
+                    )
+        return self
 
 
 class WebSearchConfig(Base):
@@ -253,6 +307,7 @@ class Config(BaseSettings):
     gateway: GatewayConfig = Field(default_factory=GatewayConfig)
     cases: CasesConfig = Field(default_factory=CasesConfig)
     inspection: InspectionConfig = Field(default_factory=InspectionConfig)
+    targeting: TargetingConfig = Field(default_factory=TargetingConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
 
     @property

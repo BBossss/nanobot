@@ -327,14 +327,22 @@ def gateway(
                     model=config.agents.defaults.model,
                     cases=config.cases,
                     exec_config=config.tools.exec,
+                    targeting=config.targeting,
                 )
                 result = await service.run(trigger="cron")
                 if result.get("status") == "disabled":
                     return "Inspection is disabled in config."
+                target_status = result.get("target_status") or {}
+                status_text = (
+                    f"ok={target_status.get('ok', 0)} "
+                    f"failed={target_status.get('failed', 0)} "
+                    f"skipped={target_status.get('skipped', 0)}"
+                )
                 text = (
                     f"Inspection done: targets={result.get('targets', 0)} "
                     f"findings={result.get('findings', 0)} "
-                    f"errors={result.get('target_errors', 0)}\n"
+                    f"errors={result.get('target_errors', 0)} "
+                    f"status=({status_text})\n"
                     f"Report: {result.get('report_path', '')}"
                 )
                 if result.get("case_id"):
@@ -1077,6 +1085,7 @@ def inspection_run(
         model=config.agents.defaults.model if provider else None,
         cases=config.cases,
         exec_config=config.tools.exec,
+        targeting=config.targeting,
     )
 
     async def _run():
@@ -1087,11 +1096,18 @@ def inspection_run(
         console.print("[yellow]Inspection is disabled in config.[/yellow]")
         raise typer.Exit(0)
 
+    target_status = result.get("target_status") or {}
+    status_text = (
+        f"ok={target_status.get('ok', 0)} "
+        f"failed={target_status.get('failed', 0)} "
+        f"skipped={target_status.get('skipped', 0)}"
+    )
     console.print(
         f"[green]Inspection done[/green] "
         f"targets={result.get('targets', 0)} "
         f"findings={result.get('findings', 0)} "
-        f"errors={result.get('target_errors', 0)}"
+        f"errors={result.get('target_errors', 0)} "
+        f"status=({status_text})"
     )
     report_path = result.get("report_path", "")
     console.print("Report:")

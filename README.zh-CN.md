@@ -487,6 +487,7 @@ python3 -m pytest -q \
 ## 相关文档
 
 - [HCIGuard 功能文档](docs/hci-feature-guide-v1.md)
+- [V1.x 路线图](docs/roadmap-v1.x.md)
 - [技术设计](docs/technical-design-hci-troubleshooting-assistant-v1.md)
 - [开发状态](docs/development-status-v1.md)
 - [Skill 规范](docs/skill-spec-v1.md)
