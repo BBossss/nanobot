@@ -21,7 +21,7 @@ SUPPORTED_MULTI_TARGET_TOOLS = {
     "read_log_tail",
     "find_logs",
 }
-LOG_MULTI_TARGET_TOOLS = {"search_log", "read_log_tail", "find_logs"}
+LOG_MULTI_TARGET_TOOLS = {"search_log", "read_log_tail"}
 
 
 def supports_multi_target_tool(name: str) -> bool:
@@ -74,7 +74,10 @@ def aggregate_multi_target_results(*, tool_name: str, results: list[dict[str, An
         if status != "ok":
             failures.append(f"- {target_id}: {item.get('error') or 'unknown error'}")
             continue
-        signature = _normalize_content_signature(str(item.get("content", "")))
+        signature = _normalize_content_signature(
+            tool_name=tool_name,
+            content=str(item.get("content", "")),
+        )
         signatures.setdefault(signature, []).append(target_id)
         if tool_name in LOG_MULTI_TARGET_TOOLS:
             observed_at = item.get("observed_at")
@@ -121,10 +124,34 @@ def aggregate_multi_target_results(*, tool_name: str, results: list[dict[str, An
     return "\n".join(lines)
 
 
-def _normalize_content_signature(content: str) -> str:
-    """Strip target-specific prefixes so cross-target similarities can group together."""
+def _normalize_content_signature(*, tool_name: str, content: str) -> str:
+    """Strip target-specific and log-format noise so cross-target similarities group together."""
     normalized = re.sub(r"\[target=[^\]]+\]\s*", "", content).strip()
+    if tool_name in LOG_MULTI_TARGET_TOOLS:
+        normalized = _normalize_log_content_signature(normalized)
     return normalized or "(empty)"
+
+
+def _normalize_log_content_signature(content: str) -> str:
+    lines: list[str] = []
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if _is_log_header_line(line):
+            continue
+        line = re.sub(r"^\d+:\s*", "", line)
+        line = re.sub(r"^\d{4}[-/]\d{2}[-/]\d{2} \d{2}:\d{2}:\d{2}\s*", "", line)
+        if line:
+            lines.append(line)
+    return "\n".join(lines).strip() or "(empty)"
+
+
+def _is_log_header_line(line: str) -> bool:
+    return bool(
+        re.match(r"^tail\s+\d+\s+lines\s+from\s+.+:$", line)
+        or re.match(r"^Found(?:\s+\d+\s+match\(es\))?\s+in\s+.+:$", line)
+    )
 
 
 def _build_candidate_root_cause_summary(lines: list[str]) -> str:

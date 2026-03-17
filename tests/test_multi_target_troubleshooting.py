@@ -154,6 +154,35 @@ def test_aggregate_multi_target_results_includes_log_timeline_for_log_tools() ->
     assert "Concurrent / Near Events" in summary
 
 
+def test_aggregate_multi_target_results_groups_search_log_matches_as_common_despite_line_number_differences() -> None:
+    summary = aggregate_multi_target_results(
+        tool_name="search_log",
+        results=[
+            {
+                "target_id": "node-a",
+                "target_host": "root@10.0.0.1",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.1] Found matches in /sf/log/app.log:\n"
+                    "12: 2026-03-18 10:21:03 timeout while connecting to storage backend"
+                ),
+            },
+            {
+                "target_id": "node-b",
+                "target_host": "root@10.0.0.2",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.2] Found matches in /sf/log/app.log:\n"
+                    "98: 2026-03-18 10:21:05 timeout while connecting to storage backend"
+                ),
+            },
+        ],
+    )
+
+    assert "Common Findings" in summary
+    assert "node-a, node-b" in summary
+
+
 def test_aggregate_multi_target_results_lists_unknown_log_lines_without_fake_timeline() -> None:
     summary = aggregate_multi_target_results(
         tool_name="read_log_tail",
@@ -195,6 +224,36 @@ def test_aggregate_multi_target_results_keeps_non_log_tools_without_timeline() -
 
     assert "Timeline" not in summary
     assert "Common Findings" in summary
+
+
+def test_aggregate_multi_target_results_does_not_treat_find_logs_as_timeline_input() -> None:
+    summary = aggregate_multi_target_results(
+        tool_name="find_logs",
+        results=[
+            {
+                "target_id": "node-a",
+                "target_host": "root@10.0.0.1",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.1] find_logs('upgrade') returned 1 result(s):\n"
+                    "/sf/log/today/upgrade-worker.log"
+                ),
+            },
+            {
+                "target_id": "node-b",
+                "target_host": "root@10.0.0.2",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.2] find_logs('upgrade') returned 1 result(s):\n"
+                    "/sf/log/today/upgrade-worker.log"
+                ),
+            },
+        ],
+    )
+
+    assert "Timeline" not in summary
+    assert "No Timestamp Evidence" not in summary
+    assert "Candidate Root Cause" not in summary
 
 
 def test_aggregate_multi_target_results_includes_candidate_root_cause_when_supported() -> None:
@@ -244,3 +303,23 @@ def test_aggregate_multi_target_results_skips_candidate_root_cause_when_evidence
     )
 
     assert "Candidate Root Cause" not in summary
+
+
+def test_aggregate_multi_target_results_candidate_root_cause_uses_raw_log_snippets() -> None:
+    summary = aggregate_multi_target_results(
+        tool_name="search_log",
+        results=[
+            {
+                "target_id": "node-a",
+                "target_host": "root@10.0.0.1",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.1] Found matches in /sf/log/app.log:\n"
+                    "12: 2026-03-18 10:21:03 dependency unreachable while connecting to storage backend"
+                ),
+            },
+        ],
+    )
+
+    assert "Candidate Root Cause" in summary
+    assert "dependency unreachable while connecting to storage backend" in summary
