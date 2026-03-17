@@ -195,7 +195,13 @@ Not in current scope:
 
 ## Install
 
-From source:
+Recommended local install:
+
+```bash
+uv tool install nanobot-ai
+```
+
+Alternative source install:
 
 ```bash
 git clone https://github.com/${REPO_SLUG}.git
@@ -211,28 +217,48 @@ pip install pytest
 
 ## Quick Start
 
-Initialize workspace files and default templates:
+First run:
 
 ```bash
-nanobot onboard
+nanobot
 ```
 
-Configure your model in `~/.nanobot/config.json`:
+If minimal config is missing, HCIGuard automatically starts an onboarding wizard and asks for:
+
+- `base_url`
+- `api_key`
+- `model`
+
+Default first-run path:
 
 ```json
 {
   "agents": {
     "defaults": {
-      "model": "openai-codex/gpt-5.1-codex-max",
-      "provider": "auto"
+      "model": "gpt-4.1-mini",
+      "provider": "custom"
     }
   },
   "providers": {
-    "openrouter": {
-      "apiKey": "sk-or-v1-xxx"
+    "custom": {
+      "apiBase": "http://gateway.example/v1",
+      "apiKey": "sk-xxx"
     }
   }
 }
+```
+
+After onboarding, verify readiness:
+
+```bash
+nanobot doctor
+```
+
+Shortest usable path:
+
+```bash
+nanobot quickstart
+nanobot agent
 ```
 
 Recommended first-run HCI settings:

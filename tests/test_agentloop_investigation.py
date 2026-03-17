@@ -88,3 +88,30 @@ async def test_run_agent_loop_converges_after_two_stale_rounds(tmp_path: Path) -
     assert "two consecutive rounds produced no new evidence" in final_content
     assert loop.tools.execute.await_count == 1
     assert loop.provider.chat.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_run_agent_loop_emits_stage_progress_messages(tmp_path: Path) -> None:
+    loop = _make_loop(tmp_path, max_rounds=4)
+    loop.provider.chat = AsyncMock(
+        side_effect=[
+            LLMResponse(
+                content="先检查日志。",
+                tool_calls=[ToolCallRequest(id="1", name="read_log_tail", arguments={"path": "/var/log/app.log"})],
+            ),
+            LLMResponse(content="已完成结论。", tool_calls=[]),
+        ]
+    )
+    loop.tools.execute = AsyncMock(return_value="ok")
+    progress: list[str] = []
+
+    final_content, _tools_used, _messages = await loop._run_agent_loop(
+        [{"role": "system", "content": "system"}, {"role": "user", "content": "user"}],
+        on_progress=AsyncMock(side_effect=lambda content, **_: progress.append(content)),
+    )
+
+    assert final_content == "已完成结论。"
+    assert any("生成调查计划" in item for item in progress)
+    assert any("执行只读检查" in item for item in progress)
+    assert any("汇总证据" in item for item in progress)
+    assert any("输出判断" in item for item in progress)

@@ -238,3 +238,39 @@ async def test_confirmed_followup_with_storage_keyword_does_not_re_prompt_confir
     assert "确认" not in confirmed
     assert "确认" not in followup
     assert followup == "done-2"
+
+
+@pytest.mark.asyncio
+async def test_process_direct_emits_multi_target_execution_progress(tmp_path: Path) -> None:
+    targeting = TargetingConfig.model_validate(
+        {
+            "targets": [
+                {"id": "node-a", "target": "root@10.0.0.1", "labels": ["storage", "hci"]},
+                {"id": "node-b", "target": "root@10.0.0.2", "labels": ["storage", "hci"]},
+            ],
+            "groups": [
+                {"name": "storage-cluster", "targets": ["node-a", "node-b"]},
+            ],
+        }
+    )
+    loop = _make_loop(tmp_path, targeting=targeting)
+    loop.provider.chat = AsyncMock(
+        side_effect=[
+            LLMResponse(
+                content="准备检查服务状态。",
+                tool_calls=[ToolCallRequest(id="1", name="service_status", arguments={"service": "nginx"})],
+            ),
+            LLMResponse(content="done", tool_calls=[]),
+        ]
+    )
+    loop.tools.execute = AsyncMock(return_value="active")
+    progress: list[str] = []
+
+    await loop.process_direct("storage 集群出问题了", session_key="cli:cluster")
+    await loop.process_direct(
+        "确认",
+        session_key="cli:cluster",
+        on_progress=AsyncMock(side_effect=lambda content, **_: progress.append(content)),
+    )
+
+    assert any("多节点" in item and "2 个目标" in item for item in progress)

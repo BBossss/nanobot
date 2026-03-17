@@ -105,6 +105,14 @@
 
 - 这两项目前是“文档完成”，不是“代码迁移完成”。
 
+### 3.8 CLI 首日体验第一轮收口
+
+- 本地安装主路径已收敛到 `uv tool install nanobot-ai`
+- 首次执行 `nanobot` 时可自动进入最小 onboarding
+- 已增加 `nanobot doctor`
+- 已增加 `nanobot quickstart`
+- 首次排障链路已补充阶段化进度反馈
+
 ---
 
 ## 4. 部分完成项

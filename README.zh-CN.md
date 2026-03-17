@@ -191,7 +191,13 @@ flowchart LR
 
 ## 安装
 
-从源码安装：
+推荐本地安装方式：
+
+```bash
+uv tool install nanobot-ai
+```
+
+可选源码安装方式：
 
 ```bash
 git clone https://github.com/${REPO_SLUG}.git
@@ -207,28 +213,48 @@ pip install pytest
 
 ## 快速开始
 
-初始化工作区和默认模板：
+首次运行：
 
 ```bash
-nanobot onboard
+nanobot
 ```
 
-在 `~/.nanobot/config.json` 中配置模型：
+如果最小配置缺失，HCIGuard 会自动进入首启向导，并询问：
+
+- `base_url`
+- `api_key`
+- `model`
+
+默认首跑配置路径：
 
 ```json
 {
   "agents": {
     "defaults": {
-      "model": "openai-codex/gpt-5.1-codex-max",
-      "provider": "auto"
+      "model": "gpt-4.1-mini",
+      "provider": "custom"
     }
   },
   "providers": {
-    "openrouter": {
-      "apiKey": "sk-or-v1-xxx"
+    "custom": {
+      "apiBase": "http://gateway.example/v1",
+      "apiKey": "sk-xxx"
     }
   }
 }
+```
+
+向导结束后，先执行：
+
+```bash
+nanobot doctor
+```
+
+最短可用路径：
+
+```bash
+nanobot quickstart
+nanobot agent
 ```
 
 推荐首跑配置：

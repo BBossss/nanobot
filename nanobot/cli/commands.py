@@ -19,13 +19,14 @@ from rich.table import Table
 from rich.text import Text
 
 from nanobot import __logo__, __version__
+from nanobot.cli.doctor import run_doctor
 from nanobot.config.schema import Config
 from nanobot.utils.helpers import sync_workspace_templates
 
 app = typer.Typer(
     name="nanobot",
     help=f"{__logo__} HCIGuard - HCI Troubleshooting Assistant",
-    no_args_is_help=True,
+    no_args_is_help=False,
 )
 
 console = Console()
@@ -153,14 +154,111 @@ def version_callback(value: bool):
         raise typer.Exit()
 
 
-@app.callback()
+def _has_minimal_bootstrap_config(config: Config, config_path: Path) -> bool:
+    """Return whether the current config is sufficient to avoid first-run onboarding."""
+    if not config_path.exists():
+        return False
+
+    model = config.agents.defaults.model.strip()
+    provider_name = config.get_provider_name(model)
+    provider = config.get_provider(model)
+    if not model or not provider_name:
+        return False
+    if model.startswith("bedrock/"):
+        return True
+    if provider_name == "custom":
+        return bool(provider and provider.api_key and provider.api_base)
+
+    from nanobot.providers.registry import find_by_name
+
+    spec = find_by_name(provider_name)
+    if spec and spec.is_oauth:
+        return True
+    return bool(provider and provider.api_key)
+
+
+def _run_minimal_onboarding(*, headline: str | None = None) -> None:
+    """Run the first-run minimal onboarding wizard."""
+    from nanobot.config.loader import get_config_path, load_config, save_config
+    from nanobot.utils.helpers import get_workspace_path
+
+    config_path = get_config_path()
+    existing = load_config() if config_path.exists() else Config()
+
+    if headline:
+        console.print(headline)
+    console.print("[cyan]Configure your default OpenAI-compatible gateway[/cyan]")
+
+    try:
+        base_url = typer.prompt(
+            "Base URL",
+            default=existing.providers.custom.api_base or "http://localhost:8000/v1",
+        ).strip()
+        api_key = typer.prompt(
+            "API key",
+            default=existing.providers.custom.api_key or "",
+            hide_input=True,
+        ).strip()
+        model = typer.prompt(
+            "Model",
+            default=existing.agents.defaults.model if config_path.exists() else "gpt-4.1-mini",
+        ).strip()
+    except (KeyboardInterrupt, EOFError):
+        console.print("[yellow]Onboarding cancelled.[/yellow]")
+        raise typer.Exit(1)
+
+    config = existing.model_copy(deep=True)
+    config.agents.defaults.provider = "custom"
+    config.agents.defaults.model = model
+    config.providers.custom.api_base = base_url
+    config.providers.custom.api_key = api_key
+
+    save_config(config)
+    console.print(f"[green]✓[/green] Created config at {config_path}")
+
+    workspace = get_workspace_path(config.agents.defaults.workspace)
+    if not workspace.exists():
+        workspace.mkdir(parents=True, exist_ok=True)
+    console.print(f"[green]✓[/green] Created workspace at {workspace}")
+    sync_workspace_templates(workspace)
+
+    checks = run_doctor(config_path=config_path, workspace_path=workspace, config=config)
+    table = Table(title="HCIGuard Doctor")
+    table.add_column("Check")
+    table.add_column("Status")
+    table.add_column("Detail")
+    for check in checks:
+        table.add_row(check.name, check.status, check.detail)
+    console.print()
+    console.print(table)
+
+    console.print("\n[green]Next steps[/green]")
+    console.print("  [cyan]nanobot doctor[/cyan]")
+    console.print("  [cyan]nanobot agent[/cyan]")
+    console.print("  [cyan]nanobot quickstart[/cyan]")
+
+
+@app.callback(invoke_without_command=True)
 def main(
+    ctx: typer.Context,
     version: bool = typer.Option(
         None, "--version", "-v", callback=version_callback, is_eager=True
     ),
 ):
     """HCIGuard - HCI Troubleshooting Assistant."""
-    pass
+    if ctx.invoked_subcommand is not None:
+        return
+
+    from nanobot.config.loader import get_config_path, load_config
+
+    config_path = get_config_path()
+    config = load_config(config_path)
+    if not _has_minimal_bootstrap_config(config, config_path):
+        _run_minimal_onboarding(headline="[cyan]First-time setup[/cyan]")
+        raise typer.Exit(0)
+
+    console.print(ctx.get_help())
+    raise typer.Exit(0)
 
 
 # ============================================================================
@@ -171,43 +269,37 @@ def main(
 @app.command()
 def onboard():
     """Initialize nanobot configuration and workspace."""
-    from nanobot.config.loader import get_config_path, load_config, save_config
-    from nanobot.config.schema import Config
+    _run_minimal_onboarding(headline="[cyan]First-time setup[/cyan]")
+
+
+@app.command()
+def doctor():
+    """Check whether the local CLI setup is ready to run."""
+    from nanobot.config.loader import get_config_path, load_config
     from nanobot.utils.helpers import get_workspace_path
 
     config_path = get_config_path()
+    config = load_config(config_path)
+    workspace_path = get_workspace_path(config.agents.defaults.workspace)
+    checks = run_doctor(config_path=config_path, workspace_path=workspace_path, config=config)
 
-    if config_path.exists():
-        console.print(f"[yellow]Config already exists at {config_path}[/yellow]")
-        console.print("  [bold]y[/bold] = overwrite with defaults (existing values will be lost)")
-        console.print("  [bold]N[/bold] = refresh config, keeping existing values and adding new fields")
-        if typer.confirm("Overwrite?"):
-            config = Config()
-            save_config(config)
-            console.print(f"[green]✓[/green] Config reset to defaults at {config_path}")
-        else:
-            config = load_config()
-            save_config(config)
-            console.print(f"[green]✓[/green] Config refreshed at {config_path} (existing values preserved)")
-    else:
-        save_config(Config())
-        console.print(f"[green]✓[/green] Created config at {config_path}")
+    table = Table(title="HCIGuard Doctor")
+    table.add_column("Check")
+    table.add_column("Status")
+    table.add_column("Detail")
+    for check in checks:
+        table.add_row(check.name, check.status, check.detail)
+    console.print(table)
 
-    # Create workspace
-    workspace = get_workspace_path()
 
-    if not workspace.exists():
-        workspace.mkdir(parents=True, exist_ok=True)
-        console.print(f"[green]✓[/green] Created workspace at {workspace}")
-
-    sync_workspace_templates(workspace)
-
-    console.print(f"\n{__logo__} HCIGuard is ready!")
-    console.print("\nNext steps:")
-    console.print("  1. Add your API key to [cyan]~/.nanobot/config.json[/cyan]")
-    console.print("     Get one at: https://openrouter.ai/keys")
-    console.print("  2. Chat: [cyan]nanobot agent -m \"Hello!\"[/cyan]")
-    console.print("\n[dim]Want Telegram/Mattermost? See: https://github.com/HKUDS/nanobot#-chat-apps[/dim]")
+@app.command()
+def quickstart():
+    """Print the shortest local install and first-run path."""
+    console.print("[cyan]HCIGuard Quickstart[/cyan]")
+    console.print("1. [cyan]uv tool install nanobot-ai[/cyan]")
+    console.print("2. [cyan]nanobot[/cyan]")
+    console.print("3. [cyan]nanobot doctor[/cyan]")
+    console.print("4. [cyan]nanobot agent[/cyan]")
 
 
 

@@ -17,8 +17,8 @@ from nanobot.agent.context import ContextBuilder
 from nanobot.agent.memory import MemoryStore
 from nanobot.agent.multi_target import execute_multi_target_tool, supports_multi_target_tool
 from nanobot.agent.subagent import SubagentManager
-from nanobot.agent.tools.cron import CronTool
 from nanobot.agent.tools.cases import GetCaseTool, SearchCasesTool
+from nanobot.agent.tools.cron import CronTool
 from nanobot.agent.tools.diagnostics import (
     DiagnoseLogReadTool,
     DiagnoseLogSearchTool,
@@ -29,6 +29,7 @@ from nanobot.agent.tools.message import MessageTool
 from nanobot.agent.tools.planning import PlanningTool
 from nanobot.agent.tools.registry import ToolRegistry
 from nanobot.agent.tools.shell import ExecTool
+from nanobot.agent.tools.spawn import SpawnTool
 from nanobot.agent.tools.troubleshooting import (
     DiskSnapshotTool,
     FindLogsTool,
@@ -40,7 +41,6 @@ from nanobot.agent.tools.troubleshooting import (
     SearchLogTool,
     ServiceStatusTool,
 )
-from nanobot.agent.tools.spawn import SpawnTool
 from nanobot.agent.tools.web import WebFetchTool, WebSearchTool
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
@@ -414,6 +414,7 @@ class AgentLoop:
         tool_result_cache: dict[str, str] = {}
         object_result_cache: dict[str, str] = {}
         seen_result_signatures: set[str] = set()
+        planning_announced = False
 
         while iteration < self.max_iterations:
             iteration += 1
@@ -430,9 +431,22 @@ class AgentLoop:
             if response.has_tool_calls:
                 investigation.rounds += 1
                 if on_progress:
+                    if not planning_announced:
+                        await on_progress("生成调查计划")
+                        planning_announced = True
                     clean = self._strip_think(response.content)
                     if clean:
                         await on_progress(clean)
+                    stage_note = "执行只读检查"
+                    if (
+                        session
+                        and session.metadata.get("expansion_confirmed") is True
+                        and supports_multi_target_tool(response.tool_calls[0].name)
+                    ):
+                        resolved_targets = session.metadata.get("resolved_targets") or []
+                        if resolved_targets:
+                            stage_note = f"执行多节点只读检查（{len(resolved_targets)} 个目标）"
+                    await on_progress(stage_note)
                     await on_progress(self._tool_hint(response.tool_calls), tool_hint=True)
 
                 tool_call_dicts = [
@@ -503,6 +517,9 @@ class AgentLoop:
                     logger.error("LLM returned error: {}", (clean or "")[:200])
                     final_content = clean or "Sorry, I encountered an error calling the AI model."
                     break
+                if on_progress:
+                    await on_progress("汇总证据")
+                    await on_progress("输出判断")
                 messages = self.context.add_assistant_message(
                     messages, clean, reasoning_content=response.reasoning_content,
                     thinking_blocks=response.thinking_blocks,
@@ -719,6 +736,8 @@ class AgentLoop:
         )
 
         if progress_cb:
+            await progress_cb("初始化上下文")
+            await progress_cb("识别目标/范围")
             scope_hint = self._build_confirmed_scope_progress(session)
             if scope_hint:
                 await progress_cb(scope_hint)

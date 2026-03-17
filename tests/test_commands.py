@@ -33,7 +33,12 @@ def mock_paths():
 
         mock_cp.return_value = config_file
         mock_ws.return_value = workspace_dir
-        mock_sc.side_effect = lambda config: config_file.write_text("{}")
+        mock_sc.side_effect = lambda config: config_file.write_text(config.model_dump_json(by_alias=True))
+        mock_lc.side_effect = lambda config_path=None: (
+            Config.model_validate_json(config_file.read_text())
+            if config_file.exists()
+            else Config()
+        )
 
         yield config_file, workspace_dir
 
@@ -42,59 +47,205 @@ def mock_paths():
 
 
 def test_onboard_fresh_install(mock_paths):
-    """No existing config — should create from scratch."""
+    """No existing config — should create a minimal runnable setup."""
     config_file, workspace_dir = mock_paths
 
-    result = runner.invoke(app, ["onboard"])
+    result = runner.invoke(
+        app,
+        ["onboard"],
+        input="http://gw.example/v1\nsecret-key\ngpt-4.1-mini\n",
+    )
 
     assert result.exit_code == 0
     assert "Created config" in result.stdout
     assert "Created workspace" in result.stdout
-    assert "HCIGuard is ready" in result.stdout
+    assert "HCIGuard Doctor" in result.stdout
+    assert "nanobot doctor" in result.stdout
     assert config_file.exists()
     assert (workspace_dir / "AGENTS.md").exists()
     assert (workspace_dir / "memory" / "MEMORY.md").exists()
 
 
 def test_onboard_existing_config_refresh(mock_paths):
-    """Config exists, user declines overwrite — should refresh (load-merge-save)."""
+    """Existing config should be updated in place through the wizard."""
     config_file, workspace_dir = mock_paths
-    config_file.write_text('{"existing": true}')
+    config_file.write_text(Config().model_dump_json(by_alias=True))
 
-    result = runner.invoke(app, ["onboard"], input="n\n")
+    result = runner.invoke(
+        app,
+        ["onboard"],
+        input="http://gw.example/v1\nsecret-key\ngpt-4.1-mini\n",
+    )
 
     assert result.exit_code == 0
-    assert "Config already exists" in result.stdout
-    assert "existing values preserved" in result.stdout
+    assert "Config already exists" not in result.stdout
     assert workspace_dir.exists()
     assert (workspace_dir / "AGENTS.md").exists()
 
 
 def test_onboard_existing_config_overwrite(mock_paths):
-    """Config exists, user confirms overwrite — should reset to defaults."""
+    """Existing config should be overwritten with the new minimal values."""
     config_file, workspace_dir = mock_paths
-    config_file.write_text('{"existing": true}')
+    config = Config()
+    config.agents.defaults.provider = "custom"
+    config.providers.custom.api_key = "old-key"
+    config.providers.custom.api_base = "http://old.example/v1"
+    config_file.write_text(config.model_dump_json(by_alias=True))
 
-    result = runner.invoke(app, ["onboard"], input="y\n")
+    result = runner.invoke(
+        app,
+        ["onboard"],
+        input="http://gw.example/v1\nsecret-key\ngpt-4.1-mini\n",
+    )
 
     assert result.exit_code == 0
-    assert "Config already exists" in result.stdout
-    assert "Config reset to defaults" in result.stdout
+    data = Config.model_validate_json(config_file.read_text())
+    assert data.providers.custom.api_key == "secret-key"
     assert workspace_dir.exists()
 
 
 def test_onboard_existing_workspace_safe_create(mock_paths):
-    """Workspace exists — should not recreate, but still add missing templates."""
+    """Existing workspace should be reused while missing templates are still added."""
     config_file, workspace_dir = mock_paths
     workspace_dir.mkdir(parents=True)
-    config_file.write_text("{}")
+    config_file.write_text(Config().model_dump_json(by_alias=True))
 
-    result = runner.invoke(app, ["onboard"], input="n\n")
+    result = runner.invoke(
+        app,
+        ["onboard"],
+        input="http://gw.example/v1\nsecret-key\ngpt-4.1-mini\n",
+    )
 
     assert result.exit_code == 0
-    assert "Created workspace" not in result.stdout
+    assert "Created workspace" in result.stdout
     assert "Created AGENTS.md" in result.stdout
     assert (workspace_dir / "AGENTS.md").exists()
+
+
+def test_root_command_runs_onboarding_when_minimal_config_missing(mock_paths):
+    config_file, workspace_dir = mock_paths
+
+    result = runner.invoke(
+        app,
+        [],
+        input="http://gw.example/v1\nsecret-key\ngpt-4.1-mini\n",
+    )
+
+    assert result.exit_code == 0
+    assert "First-time setup" in result.stdout
+    assert "Created workspace" in result.stdout
+    assert "doctor" in result.stdout
+    assert config_file.exists()
+    assert workspace_dir.exists()
+
+
+def test_root_command_shows_help_when_minimal_config_exists(mock_paths):
+    config_file, _workspace_dir = mock_paths
+    config_file.write_text(
+        """
+{
+  "agents": {
+    "defaults": {
+      "provider": "custom",
+      "model": "gpt-4.1-mini"
+    }
+  },
+  "providers": {
+    "custom": {
+      "apiKey": "secret-key",
+      "apiBase": "http://gw.example/v1"
+    }
+  }
+}
+""".strip()
+    )
+
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 0
+    assert "Commands" in result.stdout
+    assert "First-time setup" not in result.stdout
+
+
+def test_onboard_writes_minimal_openai_compatible_config(mock_paths):
+    config_file, workspace_dir = mock_paths
+
+    result = runner.invoke(
+        app,
+        ["onboard"],
+        input="http://gw.example/v1\nsecret-key\ngpt-4.1-mini\n",
+    )
+
+    assert result.exit_code == 0
+    data = Config.model_validate_json(config_file.read_text())
+    assert data.agents.defaults.provider == "custom"
+    assert data.agents.defaults.model == "gpt-4.1-mini"
+    assert data.providers.custom.api_base == "http://gw.example/v1"
+    assert data.providers.custom.api_key == "secret-key"
+    assert workspace_dir.exists()
+
+
+def test_onboard_cancel_does_not_write_partial_config(mock_paths):
+    config_file, _workspace_dir = mock_paths
+
+    with patch("typer.prompt", side_effect=KeyboardInterrupt):
+        result = runner.invoke(app, ["onboard"])
+
+    assert result.exit_code == 1
+    assert "cancelled" in result.stdout.lower()
+    assert not config_file.exists()
+
+
+def test_onboard_existing_config_refreshes_without_overwrite_prompt_for_minimal_flow(mock_paths):
+    config_file, _workspace_dir = mock_paths
+    config_file.write_text("{}")
+
+    with patch("typer.prompt", side_effect=["http://gw.example/v1", "secret-key", "gpt-4.1-mini"]):
+        result = runner.invoke(app, ["onboard"])
+
+    assert result.exit_code == 0
+    assert "Config already exists" not in result.stdout
+    data = Config.model_validate_json(config_file.read_text())
+    assert data.providers.custom.api_key == "secret-key"
+
+
+def test_quickstart_prints_shortest_path() -> None:
+    result = runner.invoke(app, ["quickstart"])
+
+    assert result.exit_code == 0
+    assert "uv tool install nanobot-ai" in result.stdout
+    assert "nanobot" in result.stdout
+    assert "nanobot doctor" in result.stdout
+    assert "nanobot agent" in result.stdout
+
+
+def test_doctor_reports_blocked_when_provider_config_missing(mock_paths):
+    _config_file, _workspace_dir = mock_paths
+
+    result = runner.invoke(app, ["doctor"])
+
+    assert result.exit_code == 0
+    assert "配置" in result.stdout
+    assert "模型连通性" in result.stdout
+    assert "blocked" in result.stdout
+
+
+def test_doctor_reports_ok_when_minimal_custom_provider_is_ready(mock_paths):
+    config_file, workspace_dir = mock_paths
+    config = Config()
+    config.agents.defaults.provider = "custom"
+    config.agents.defaults.model = "gpt-4.1-mini"
+    config.providers.custom.api_base = "http://gw.example/v1"
+    config.providers.custom.api_key = "secret-key"
+    config_file.write_text(config.model_dump_json(by_alias=True))
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+
+    with patch("nanobot.cli.doctor.probe_model_connectivity", return_value=("ok", "connected")):
+        result = runner.invoke(app, ["doctor"])
+
+    assert result.exit_code == 0
+    assert "ok" in result.stdout
+    assert "connected" in result.stdout
 
 
 def test_config_matches_github_copilot_codex_with_hyphen_prefix():
