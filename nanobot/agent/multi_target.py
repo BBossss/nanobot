@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Any, Awaitable, Callable
+
+from nanobot.agent.timeline import build_log_timeline, extract_log_events
 
 
 SUPPORTED_MULTI_TARGET_TOOLS = {
@@ -13,6 +16,7 @@ SUPPORTED_MULTI_TARGET_TOOLS = {
     "read_log_tail",
     "find_logs",
 }
+LOG_MULTI_TARGET_TOOLS = {"search_log", "read_log_tail", "find_logs"}
 
 
 def supports_multi_target_tool(name: str) -> bool:
@@ -41,6 +45,7 @@ async def execute_multi_target_tool(
                 "status": "error" if error else "ok",
                 "content": "" if error else result,
                 "error": error,
+                "observed_at": datetime.now(),
             }
         )
     summary = aggregate_multi_target_results(tool_name=tool_name, results=collected)
@@ -56,6 +61,7 @@ def aggregate_multi_target_results(*, tool_name: str, results: list[dict[str, An
     """Build a compact multi-target summary for one tool invocation."""
     signatures: dict[str, list[str]] = {}
     failures: list[str] = []
+    timeline_events = []
 
     for item in results:
         target_id = str(item.get("target_id", "unknown"))
@@ -65,6 +71,18 @@ def aggregate_multi_target_results(*, tool_name: str, results: list[dict[str, An
             continue
         signature = _normalize_content_signature(str(item.get("content", "")))
         signatures.setdefault(signature, []).append(target_id)
+        if tool_name in LOG_MULTI_TARGET_TOOLS:
+            observed_at = item.get("observed_at")
+            if not isinstance(observed_at, datetime):
+                observed_at = datetime.now()
+            timeline_events.extend(
+                extract_log_events(
+                    target_id=target_id,
+                    tool_name=tool_name,
+                    content=str(item.get("content", "")),
+                    observed_at=observed_at,
+                )
+            )
 
     lines = [f"## Multi-Target Summary: {tool_name}"]
     if signatures:
@@ -84,6 +102,12 @@ def aggregate_multi_target_results(*, tool_name: str, results: list[dict[str, An
     if failures:
         lines.append("### Failed Targets")
         lines.extend(failures)
+
+    timeline_summary = ""
+    if tool_name in LOG_MULTI_TARGET_TOOLS and timeline_events:
+        timeline_summary = build_log_timeline(timeline_events)
+        if timeline_summary:
+            lines.extend(["", timeline_summary])
 
     return "\n".join(lines)
 

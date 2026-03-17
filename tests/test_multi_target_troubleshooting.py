@@ -122,3 +122,76 @@ def test_aggregate_multi_target_results_groups_common_local_and_failures() -> No
     assert "active" in summary
     assert "Failed Targets" in summary
     assert "node-c: timeout" in summary
+
+
+def test_aggregate_multi_target_results_includes_log_timeline_for_log_tools() -> None:
+    summary = aggregate_multi_target_results(
+        tool_name="search_log",
+        results=[
+            {
+                "target_id": "node-a",
+                "target_host": "root@10.0.0.1",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.1] Found matches in /sf/log/app.log:\n"
+                    "12: 2026-03-18 10:21:03 timeout while connecting"
+                ),
+            },
+            {
+                "target_id": "node-b",
+                "target_host": "root@10.0.0.2",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.2] Found matches in /sf/log/app.log:\n"
+                    "18: 2026-03-18 10:21:05 timeout while connecting"
+                ),
+            },
+        ],
+    )
+
+    assert "Timeline" in summary
+    assert "10:21:03 node-a" in summary
+    assert "Concurrent / Near Events" in summary
+
+
+def test_aggregate_multi_target_results_lists_unknown_log_lines_without_fake_timeline() -> None:
+    summary = aggregate_multi_target_results(
+        tool_name="read_log_tail",
+        results=[
+            {
+                "target_id": "node-a",
+                "target_host": "root@10.0.0.1",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.1] tail 1 lines from /sf/log/app.log:\n"
+                    "timeout while connecting"
+                ),
+            },
+        ],
+    )
+
+    assert "Timeline" not in summary
+    assert "No Timestamp Evidence" in summary
+
+
+def test_aggregate_multi_target_results_keeps_non_log_tools_without_timeline() -> None:
+    summary = aggregate_multi_target_results(
+        tool_name="service_status",
+        results=[
+            {
+                "target_id": "node-a",
+                "target_host": "root@10.0.0.1",
+                "status": "ok",
+                "content": "[target=root@10.0.0.1] service_status(nginx)\nactive (running)",
+            },
+            {
+                "target_id": "node-b",
+                "target_host": "root@10.0.0.2",
+                "status": "ok",
+                "content": "[target=root@10.0.0.2] service_status(nginx)\nactive (running)",
+            },
+        ],
+    )
+
+    assert "Timeline" not in summary
+    assert "Common Findings" in summary
