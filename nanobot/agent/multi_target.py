@@ -34,10 +34,12 @@ async def execute_multi_target_tool(
     arguments: dict[str, Any],
     resolved_targets: list[dict[str, Any]],
     execute_tool: Callable[[str, dict[str, Any]], Awaitable[str]],
+    on_target_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
 ) -> str:
     """Execute one supported troubleshooting tool across multiple targets."""
     collected: list[dict[str, Any]] = []
-    for target in resolved_targets:
+    total = len(resolved_targets)
+    for index, target in enumerate(resolved_targets, start=1):
         params = dict(arguments)
         params["target"] = target["target"]
         result = await execute_tool(tool_name, params)
@@ -52,6 +54,8 @@ async def execute_multi_target_tool(
                 "observed_at": datetime.now(),
             }
         )
+        if on_target_progress:
+            await on_target_progress(index, total, target["id"])
     summary = aggregate_multi_target_results(tool_name=tool_name, results=collected)
     rendered = [
         f"[multi-target][{item['target_id']} -> {item['target_host']}]\n"

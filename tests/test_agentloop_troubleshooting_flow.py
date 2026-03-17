@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -274,3 +275,83 @@ async def test_process_direct_emits_multi_target_execution_progress(tmp_path: Pa
     )
 
     assert any("多节点" in item and "2 个目标" in item for item in progress)
+
+
+@pytest.mark.asyncio
+async def test_process_direct_emits_multi_target_reason_and_summary(tmp_path: Path) -> None:
+    targeting = TargetingConfig.model_validate(
+        {
+            "targets": [
+                {"id": "node-a", "target": "root@10.0.0.1", "labels": ["storage", "hci"]},
+                {"id": "node-b", "target": "root@10.0.0.2", "labels": ["storage", "hci"]},
+            ],
+            "groups": [
+                {"name": "storage-cluster", "targets": ["node-a", "node-b"]},
+            ],
+        }
+    )
+    loop = _make_loop(tmp_path, targeting=targeting)
+    loop.provider.chat = AsyncMock(
+        side_effect=[
+            LLMResponse(
+                content="先对比服务状态。",
+                tool_calls=[ToolCallRequest(id="1", name="service_status", arguments={"service": "nginx"})],
+            ),
+            LLMResponse(content="done", tool_calls=[]),
+        ]
+    )
+    loop.tools.execute = AsyncMock(return_value="active")
+    progress: list[str] = []
+
+    await loop.process_direct("storage 集群出问题了", session_key="cli:cluster")
+    await loop.process_direct(
+        "确认",
+        session_key="cli:cluster",
+        on_progress=AsyncMock(side_effect=lambda content, **_: progress.append(content)),
+    )
+
+    assert any("所以先在多节点间对比" in item for item in progress)
+    assert any("刚才先检查了多节点服务状态" in item for item in progress)
+
+
+@pytest.mark.asyncio
+async def test_process_direct_emits_multi_target_heartbeat_progress(tmp_path: Path) -> None:
+    targeting = TargetingConfig.model_validate(
+        {
+            "targets": [
+                {"id": "node-a", "target": "root@10.0.0.1", "labels": ["storage", "hci"]},
+                {"id": "node-b", "target": "root@10.0.0.2", "labels": ["storage", "hci"]},
+            ],
+            "groups": [
+                {"name": "storage-cluster", "targets": ["node-a", "node-b"]},
+            ],
+        }
+    )
+    loop = _make_loop(tmp_path, targeting=targeting)
+    loop._PROGRESS_HEARTBEAT_INITIAL_S = 0.01
+    loop._PROGRESS_HEARTBEAT_INTERVAL_S = 0.01
+    loop.provider.chat = AsyncMock(
+        side_effect=[
+            LLMResponse(
+                content="先对比服务状态。",
+                tool_calls=[ToolCallRequest(id="1", name="service_status", arguments={"service": "nginx"})],
+            ),
+            LLMResponse(content="done", tool_calls=[]),
+        ]
+    )
+
+    async def _slow_execute(*_args, **_kwargs) -> str:
+        await asyncio.sleep(0.03)
+        return "active"
+
+    loop.tools.execute = AsyncMock(side_effect=_slow_execute)
+    progress: list[str] = []
+
+    await loop.process_direct("storage 集群出问题了", session_key="cli:cluster")
+    await loop.process_direct(
+        "确认",
+        session_key="cli:cluster",
+        on_progress=AsyncMock(side_effect=lambda content, **_: progress.append(content)),
+    )
+
+    assert any("已完成 1/2" in item or "仍在多节点检查中" in item for item in progress)
