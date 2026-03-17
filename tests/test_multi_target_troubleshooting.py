@@ -195,3 +195,52 @@ def test_aggregate_multi_target_results_keeps_non_log_tools_without_timeline() -
 
     assert "Timeline" not in summary
     assert "Common Findings" in summary
+
+
+def test_aggregate_multi_target_results_includes_candidate_root_cause_when_supported() -> None:
+    summary = aggregate_multi_target_results(
+        tool_name="search_log",
+        results=[
+            {
+                "target_id": "node-a",
+                "target_host": "root@10.0.0.1",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.1] Found matches in /sf/log/app.log:\n"
+                    "12: 2026-03-18 10:21:03 timeout while connecting to storage backend"
+                ),
+            },
+            {
+                "target_id": "node-b",
+                "target_host": "root@10.0.0.2",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.2] Found matches in /sf/log/app.log:\n"
+                    "18: 2026-03-18 10:21:05 timeout while connecting to storage backend"
+                ),
+            },
+        ],
+    )
+
+    assert "Candidate Root Cause" in summary
+    assert "跨节点共享连接/超时异常" in summary
+    assert "Supporting Evidence" in summary
+
+
+def test_aggregate_multi_target_results_skips_candidate_root_cause_when_evidence_is_weak() -> None:
+    summary = aggregate_multi_target_results(
+        tool_name="read_log_tail",
+        results=[
+            {
+                "target_id": "node-a",
+                "target_host": "root@10.0.0.1",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.1] tail 1 lines from /sf/log/app.log:\n"
+                    "minor issue observed"
+                ),
+            },
+        ],
+    )
+
+    assert "Candidate Root Cause" not in summary

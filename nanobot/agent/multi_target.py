@@ -6,6 +6,11 @@ import re
 from datetime import datetime
 from typing import Any, Awaitable, Callable
 
+from nanobot.agent.root_cause_candidates import (
+    extract_candidate_signals,
+    map_root_cause_candidates,
+    render_candidate_root_causes,
+)
 from nanobot.agent.timeline import build_log_timeline, extract_log_events
 
 
@@ -109,6 +114,10 @@ def aggregate_multi_target_results(*, tool_name: str, results: list[dict[str, An
         if timeline_summary:
             lines.extend(["", timeline_summary])
 
+    candidate_summary = _build_candidate_root_cause_summary(lines)
+    if candidate_summary:
+        lines.extend(["", candidate_summary])
+
     return "\n".join(lines)
 
 
@@ -116,3 +125,13 @@ def _normalize_content_signature(content: str) -> str:
     """Strip target-specific prefixes so cross-target similarities can group together."""
     normalized = re.sub(r"\[target=[^\]]+\]\s*", "", content).strip()
     return normalized or "(empty)"
+
+
+def _build_candidate_root_cause_summary(lines: list[str]) -> str:
+    summary_text = "\n".join(lines)
+    extracted = extract_candidate_signals(summary_text)
+    candidates = map_root_cause_candidates(extracted)
+    rendered = render_candidate_root_causes(candidates)
+    if "当前证据不足以形成候选根因" in rendered:
+        return ""
+    return rendered
