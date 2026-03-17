@@ -979,15 +979,19 @@ class AgentLoop:
 
         task = asyncio.create_task(_run())
         timeout = self._PROGRESS_HEARTBEAT_INITIAL_S
-        while True:
-            try:
-                return await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
-            except asyncio.TimeoutError:
+        try:
+            while True:
+                done, _pending = await asyncio.wait({task}, timeout=timeout)
+                if task in done:
+                    return await task
                 if on_progress:
                     await on_progress(
                         self._render_progress_heartbeat(name, multi_target_total=multi_target_total)
                     )
                 timeout = self._PROGRESS_HEARTBEAT_INTERVAL_S
+        except asyncio.CancelledError:
+            task.cancel()
+            raise
 
     @staticmethod
     def _tool_feedback_bucket(name: str) -> str:

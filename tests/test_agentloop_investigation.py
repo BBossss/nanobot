@@ -208,3 +208,37 @@ async def test_run_agent_loop_emits_heartbeat_for_slow_tool_calls(tmp_path: Path
 
     assert final_content == "最终结论。"
     assert any("仍在读取日志" in item for item in progress)
+
+
+@pytest.mark.asyncio
+async def test_await_tool_with_heartbeat_does_not_leak_shielded_future_exception(tmp_path: Path) -> None:
+    loop = _make_loop(tmp_path, max_rounds=4)
+    loop._PROGRESS_HEARTBEAT_INITIAL_S = 0.01
+    loop._PROGRESS_HEARTBEAT_INTERVAL_S = 0.01
+
+    async def _slow_fail(*_args, **_kwargs) -> str:
+        await asyncio.sleep(0.03)
+        raise RuntimeError("boom")
+
+    loop.tools.execute = AsyncMock(side_effect=_slow_fail)
+    progress: list[str] = []
+    exception_contexts: list[dict] = []
+    event_loop = asyncio.get_running_loop()
+    original_handler = event_loop.get_exception_handler()
+    event_loop.set_exception_handler(lambda _loop, context: exception_contexts.append(context))
+
+    try:
+        with pytest.raises(RuntimeError, match="boom"):
+            await loop._await_tool_with_heartbeat(
+                "read_log_tail",
+                {"path": "/var/log/app.log"},
+                session=None,
+                on_progress=AsyncMock(side_effect=lambda content, **_: progress.append(content)),
+                multi_target_total=1,
+            )
+        await asyncio.sleep(0)
+    finally:
+        event_loop.set_exception_handler(original_handler)
+
+    assert any("仍在读取日志" in item for item in progress)
+    assert exception_contexts == []
