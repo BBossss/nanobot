@@ -15,6 +15,7 @@ from loguru import logger
 
 from nanobot.agent.context import ContextBuilder
 from nanobot.agent.memory import MemoryStore
+from nanobot.agent.multi_target import execute_multi_target_tool, supports_multi_target_tool
 from nanobot.agent.subagent import SubagentManager
 from nanobot.agent.tools.cron import CronTool
 from nanobot.agent.tools.cases import GetCaseTool, SearchCasesTool
@@ -55,6 +56,7 @@ if TYPE_CHECKING:
         ChannelsConfig,
         DiagnosticsToolConfig,
         ExecToolConfig,
+        TargetingConfig,
         TroubleshootingToolConfig,
     )
     from nanobot.cron.service import CronService
@@ -100,6 +102,7 @@ class AgentLoop:
         diagnostics_config: DiagnosticsToolConfig | None = None,
         troubleshooting_config: TroubleshootingToolConfig | None = None,
         cases_config: CasesConfig | None = None,
+        targeting: TargetingConfig | None = None,
         cron_service: CronService | None = None,
         restrict_to_workspace: bool = False,
         session_manager: SessionManager | None = None,
@@ -124,6 +127,7 @@ class AgentLoop:
         self.diagnostics_config = diagnostics_config
         self.troubleshooting_config = troubleshooting_config
         self.cases_config = cases_config
+        self.targeting = targeting
         self.cron_service = cron_service
         self.restrict_to_workspace = restrict_to_workspace
 
@@ -399,6 +403,7 @@ class AgentLoop:
         self,
         initial_messages: list[dict],
         on_progress: Callable[..., Awaitable[None]] | None = None,
+        session: Session | None = None,
     ) -> tuple[str | None, list[str], list[dict]]:
         """Run the agent iteration loop. Returns (final_content, tools_used, messages)."""
         messages = initial_messages
@@ -465,7 +470,7 @@ class AgentLoop:
                     elif signature in tool_result_cache:
                         result = self._format_cached_tool_result(tool_result_cache[signature])
                     else:
-                        result = await self.tools.execute(tool_call.name, tool_call.arguments)
+                        result = await self._execute_tool_call(tool_call.name, tool_call.arguments, session=session)
                         tool_result_cache[signature] = result
                         if object_signature:
                             object_result_cache[object_signature] = result
@@ -613,7 +618,7 @@ class AgentLoop:
                     metadata=msg.metadata,
                 ),
             )
-            final_content, _, all_msgs = await self._run_agent_loop(messages)
+            final_content, _, all_msgs = await self._run_agent_loop(messages, session=session)
             self._save_turn(session, all_msgs, 1 + len(history))
             self.sessions.save(session)
             return OutboundMessage(channel=channel, chat_id=chat_id,
@@ -659,6 +664,11 @@ class AgentLoop:
             return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id,
                                   content="🐈 nanobot commands:\n/new — Start a new conversation\n/stop — Stop the current task\n/help — Show available commands")
 
+        gate_reply = self._handle_target_expansion_gate(session, msg.content)
+        if gate_reply is not None:
+            self.sessions.save(session)
+            return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content=gate_reply)
+
         unconsolidated = len(session.messages) - session.last_consolidated
         if (unconsolidated >= self.memory_window and session.key not in self._consolidating):
             self._consolidating.add(session.key)
@@ -683,6 +693,16 @@ class AgentLoop:
                 message_tool.start_turn()
 
         history = session.get_history(max_messages=self.memory_window)
+
+        async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:
+            meta = dict(msg.metadata or {})
+            meta["_progress"] = True
+            meta["_tool_hint"] = tool_hint
+            await self.bus.publish_outbound(OutboundMessage(
+                channel=msg.channel, chat_id=msg.chat_id, content=content, metadata=meta,
+            ))
+
+        progress_cb = on_progress or _bus_progress
         initial_messages = self.context.build_messages(
             history=history,
             current_message=msg.content,
@@ -696,16 +716,13 @@ class AgentLoop:
             ),
         )
 
-        async def _bus_progress(content: str, *, tool_hint: bool = False) -> None:
-            meta = dict(msg.metadata or {})
-            meta["_progress"] = True
-            meta["_tool_hint"] = tool_hint
-            await self.bus.publish_outbound(OutboundMessage(
-                channel=msg.channel, chat_id=msg.chat_id, content=content, metadata=meta,
-            ))
+        if progress_cb:
+            scope_hint = self._build_confirmed_scope_progress(session)
+            if scope_hint:
+                await progress_cb(scope_hint)
 
         final_content, _, all_msgs = await self._run_agent_loop(
-            initial_messages, on_progress=on_progress or _bus_progress,
+            initial_messages, on_progress=progress_cb, session=session,
         )
 
         if final_content is None:
@@ -823,3 +840,101 @@ class AgentLoop:
         msg = InboundMessage(channel=channel, sender_id="user", chat_id=chat_id, content=content)
         response = await self._process_message(msg, session_key=session_key, on_progress=on_progress)
         return response.content if response else ""
+
+    async def _execute_tool_call(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        *,
+        session: Session | None = None,
+    ) -> str:
+        """Execute a tool call, expanding to multiple targets when confirmed."""
+        if (
+            session
+            and session.metadata.get("expansion_confirmed") is True
+            and supports_multi_target_tool(name)
+            and not arguments.get("target")
+        ):
+            resolved_targets = session.metadata.get("resolved_targets") or []
+            if resolved_targets:
+                return await execute_multi_target_tool(
+                    tool_name=name,
+                    arguments=arguments,
+                    resolved_targets=resolved_targets,
+                    execute_tool=self.tools.execute,
+                )
+        return await self.tools.execute(name, arguments)
+
+    @staticmethod
+    def _normalized_reply_token(content: str) -> str:
+        return re.sub(r"\s+", "", content.strip().lower())
+
+    def _handle_target_expansion_gate(self, session: Session, content: str) -> str | None:
+        """Handle confirmation-gated cluster expansion before normal agent execution."""
+        pending = session.metadata.get("pending_target_resolution")
+        token = self._normalized_reply_token(content)
+        if pending:
+            if token in {"确认", "继续", "可以查", "yes", "y"}:
+                session.metadata["resolved_target_ids"] = list(pending.get("resolved_target_ids", []))
+                session.metadata["resolved_targets"] = list(pending.get("resolved_targets", []))
+                session.metadata["resolution_reason"] = str(pending.get("reason", ""))
+                session.metadata["expansion_confirmed"] = True
+                session.metadata["pending_target_resolution"] = None
+                return None
+            if token in {"不用", "先单节点", "no", "n"}:
+                session.metadata["pending_target_resolution"] = None
+                session.metadata["expansion_confirmed"] = False
+                session.metadata.pop("resolved_target_ids", None)
+                session.metadata.pop("resolved_targets", None)
+                session.metadata.pop("resolution_reason", None)
+                return "保持单节点排障模式。如需多节点排查，我会先列出候选节点再请你确认。"
+
+        resolution = self._resolve_target_intent(content)
+        if not resolution:
+            return None
+
+        session.metadata["pending_target_resolution"] = resolution
+        session.metadata["expansion_confirmed"] = False
+        targets = ", ".join(resolution["resolved_target_ids"])
+        suffix = "。候选范围已截断。" if resolution.get("truncated") else "。"
+        return (
+            f"{resolution['reason']}，候选节点为 {targets}{suffix}"
+            " 如果要切换到多节点排查，请回复“确认”。当前仍保持单节点模式。"
+        )
+
+    def _resolve_target_intent(self, content: str) -> dict[str, Any] | None:
+        """Resolve a candidate multi-target scope from the current message."""
+        if not self.targeting or not self.targeting.targets:
+            return None
+
+        from nanobot.targets.intent_resolver import resolve_target_intent
+
+        resolution = resolve_target_intent(content, self.targeting)
+        if not resolution.should_expand:
+            return None
+
+        return {
+            "reason": resolution.reason,
+            "group_names": list(resolution.group_names),
+            "label_any": list(resolution.label_any),
+            "resolved_target_ids": [target.id for target in resolution.resolved_targets],
+            "resolved_targets": [
+                {"id": target.id, "target": target.target, "labels": list(target.labels)}
+                for target in resolution.resolved_targets
+            ],
+            "truncated": resolution.truncated,
+        }
+
+    @staticmethod
+    def _build_confirmed_scope_progress(session: Session) -> str | None:
+        """Build a progress note for a confirmed multi-target troubleshooting scope."""
+        if session.metadata.get("expansion_confirmed") is not True:
+            return None
+        target_ids = session.metadata.get("resolved_target_ids") or []
+        if not target_ids:
+            return None
+        reason = str(session.metadata.get("resolution_reason", "")).strip()
+        prefix = "已确认多节点排查范围"
+        if reason:
+            return f"{prefix}：{', '.join(target_ids)}。依据：{reason}"
+        return f"{prefix}：{', '.join(target_ids)}。"
