@@ -122,9 +122,14 @@ async def test_process_direct_confirmation_consumes_pending_cluster_expansion(tm
     assert loop.provider.chat.await_count == 1
 
     session = loop.sessions.get_or_create("cli:cluster")
-    assert session.metadata.get("expansion_confirmed") is True
-    assert session.metadata.get("resolved_target_ids") == ["node-a", "node-b"]
+    assert session.metadata.get("expansion_confirmed") is False
+    assert session.metadata.get("resolved_target_ids") is None
     assert session.metadata.get("pending_target_resolution") is None
+    assert session.metadata.get("expansion_skip_reprompt_once") is True
+
+    history = session.get_history()
+    user_texts = [m["content"] for m in history if m.get("role") == "user"]
+    assert "storage 集群出问题了" in user_texts
 
 
 @pytest.mark.asyncio
@@ -179,3 +184,57 @@ async def test_process_direct_emits_confirmed_multi_target_scope_progress(tmp_pa
     )
 
     assert any("node-a" in item and "node-b" in item for item in progress)
+
+
+@pytest.mark.asyncio
+async def test_confirmed_multi_target_scope_is_cleared_after_one_turn(tmp_path: Path) -> None:
+    targeting = TargetingConfig.model_validate(
+        {
+            "targets": [
+                {"id": "node-a", "target": "root@10.0.0.1", "labels": ["storage", "hci"]},
+                {"id": "node-b", "target": "root@10.0.0.2", "labels": ["storage", "hci"]},
+            ],
+            "groups": [
+                {"name": "storage-cluster", "targets": ["node-a", "node-b"]},
+            ],
+        }
+    )
+    loop = _make_loop(tmp_path, targeting=targeting)
+    loop.provider.chat = AsyncMock(return_value=LLMResponse(content="done", tool_calls=[]))
+
+    await loop.process_direct("storage 集群出问题了", session_key="cli:cluster")
+    await loop.process_direct("确认", session_key="cli:cluster")
+
+    session = loop.sessions.get_or_create("cli:cluster")
+    assert session.metadata.get("expansion_confirmed") is False
+    assert session.metadata.get("resolved_target_ids") is None
+
+
+@pytest.mark.asyncio
+async def test_confirmed_followup_with_storage_keyword_does_not_re_prompt_confirmation(tmp_path: Path) -> None:
+    targeting = TargetingConfig.model_validate(
+        {
+            "targets": [
+                {"id": "node-a", "target": "root@10.0.0.1", "labels": ["storage", "hci"]},
+                {"id": "node-b", "target": "root@10.0.0.2", "labels": ["storage", "hci"]},
+            ],
+            "groups": [
+                {"name": "storage-cluster", "targets": ["node-a", "node-b"]},
+            ],
+        }
+    )
+    loop = _make_loop(tmp_path, targeting=targeting)
+    loop.provider.chat = AsyncMock(
+        side_effect=[
+            LLMResponse(content="done-1", tool_calls=[]),
+            LLMResponse(content="done-2", tool_calls=[]),
+        ]
+    )
+
+    await loop.process_direct("storage 集群出问题了", session_key="cli:cluster")
+    confirmed = await loop.process_direct("确认", session_key="cli:cluster")
+    followup = await loop.process_direct("继续看 storage 状态", session_key="cli:cluster")
+
+    assert "确认" not in confirmed
+    assert "确认" not in followup
+    assert followup == "done-2"

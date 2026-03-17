@@ -666,8 +666,10 @@ class AgentLoop:
 
         gate_reply = self._handle_target_expansion_gate(session, msg.content)
         if gate_reply is not None:
+            self._record_gate_turn(session, user_content=msg.content, assistant_content=gate_reply)
             self.sessions.save(session)
             return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content=gate_reply)
+        confirmed_scope_active = session.metadata.get("expansion_confirmed") is True
 
         unconsolidated = len(session.messages) - session.last_consolidated
         if (unconsolidated >= self.memory_window and session.key not in self._consolidating):
@@ -729,6 +731,8 @@ class AgentLoop:
             final_content = "I've completed processing but have no response to give."
 
         self._save_turn(session, all_msgs, 1 + len(history))
+        if confirmed_scope_active:
+            self._clear_confirmed_target_scope(session, skip_reprompt_once=True)
         self.sessions.save(session)
 
         self._maybe_record_case(msg, final_content)
@@ -871,6 +875,9 @@ class AgentLoop:
 
     def _handle_target_expansion_gate(self, session: Session, content: str) -> str | None:
         """Handle confirmation-gated cluster expansion before normal agent execution."""
+        if session.metadata.pop("expansion_skip_reprompt_once", False):
+            return None
+
         pending = session.metadata.get("pending_target_resolution")
         token = self._normalized_reply_token(content)
         if pending:
@@ -883,10 +890,7 @@ class AgentLoop:
                 return None
             if token in {"不用", "先单节点", "no", "n"}:
                 session.metadata["pending_target_resolution"] = None
-                session.metadata["expansion_confirmed"] = False
-                session.metadata.pop("resolved_target_ids", None)
-                session.metadata.pop("resolved_targets", None)
-                session.metadata.pop("resolution_reason", None)
+                self._clear_confirmed_target_scope(session, skip_reprompt_once=False)
                 return "保持单节点排障模式。如需多节点排查，我会先列出候选节点再请你确认。"
 
         resolution = self._resolve_target_intent(content)
@@ -938,3 +942,21 @@ class AgentLoop:
         if reason:
             return f"{prefix}：{', '.join(target_ids)}。依据：{reason}"
         return f"{prefix}：{', '.join(target_ids)}。"
+
+    @staticmethod
+    def _clear_confirmed_target_scope(session: Session, *, skip_reprompt_once: bool) -> None:
+        """Clear confirmed multi-target scope after it has been used or rejected."""
+        session.metadata["expansion_confirmed"] = False
+        session.metadata.pop("resolved_target_ids", None)
+        session.metadata.pop("resolved_targets", None)
+        session.metadata.pop("resolution_reason", None)
+        if skip_reprompt_once:
+            session.metadata["expansion_skip_reprompt_once"] = True
+        else:
+            session.metadata.pop("expansion_skip_reprompt_once", None)
+
+    @staticmethod
+    def _record_gate_turn(session: Session, *, user_content: str, assistant_content: str) -> None:
+        """Persist early-return confirmation-gate turns into session history."""
+        session.add_message("user", user_content)
+        session.add_message("assistant", assistant_content)
