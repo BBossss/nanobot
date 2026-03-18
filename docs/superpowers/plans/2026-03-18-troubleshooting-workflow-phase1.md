@@ -19,7 +19,7 @@
 - Inspect: `nanobot/agent/loop.py`
 - Inspect: `docs/superpowers/specs/2026-03-18-troubleshooting-workflow-phase1-design.md`
 
-- [ ] **Step 1: Write failing tests for recognized control intents**
+- [x] **Step 1: Write failing tests for recognized control intents**
 
 Add tests that prove both natural language and fixed short commands can be interpreted as the same internal control classes:
 
@@ -30,7 +30,7 @@ Add tests that prove both natural language and fixed short commands can be inter
 
 Keep these tests focused on routing/recognition, not full downstream execution yet.
 
-- [ ] **Step 2: Run the targeted tests to confirm failure**
+- [x] **Step 2: Run the targeted tests to confirm failure**
 
 Run:
 
@@ -40,7 +40,7 @@ python3 -m pytest tests/test_agentloop_troubleshooting_flow.py -k "pause or resu
 
 Expected: FAIL because no workflow control parser exists yet.
 
-- [ ] **Step 3: Implement minimal control intent parsing**
+- [x] **Step 3: Implement minimal control intent parsing**
 
 Update `nanobot/agent/loop.py` to add a small parser/helper that recognizes the initial phase 1 control phrases and maps them to:
 
@@ -51,7 +51,7 @@ Update `nanobot/agent/loop.py` to add a small parser/helper that recognizes the 
 
 Do not add a generic NLP layer. Start with bounded phrase/token recognition only.
 
-- [ ] **Step 4: Run the targeted tests to verify pass**
+- [x] **Step 4: Run the targeted tests to verify pass**
 
 Run:
 
@@ -61,7 +61,7 @@ python3 -m pytest tests/test_agentloop_troubleshooting_flow.py -k "pause or resu
 
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add nanobot/agent/loop.py tests/test_agentloop_troubleshooting_flow.py
@@ -77,7 +77,7 @@ git commit -m "feat: recognize troubleshooting workflow control intents"
 - Inspect: `nanobot/session/manager.py`
 - Modify: `nanobot/agent/loop.py`
 
-- [ ] **Step 1: Write failing tests for session control state**
+- [x] **Step 1: Write failing tests for session control state**
 
 Add tests that prove:
 
@@ -88,7 +88,7 @@ Add tests that prove:
 
 Prefer `process_direct(...)` tests so the behavior is proven through the real loop entrypoint.
 
-- [ ] **Step 2: Run the tests to confirm failure**
+- [x] **Step 2: Run the tests to confirm failure**
 
 Run:
 
@@ -98,18 +98,18 @@ python3 -m pytest tests/test_agentloop_troubleshooting_flow.py -k "paused state 
 
 Expected: FAIL because workflow control metadata is not yet persisted or applied.
 
-- [ ] **Step 3: Implement minimal control state handling**
+- [x] **Step 3: Implement minimal control state handling**
 
 Update `nanobot/agent/loop.py` so that recognized control intents update session metadata with small bounded state such as:
 
 - `workflow_paused`
 - `workflow_focus_hint`
 - `workflow_scope_constraints`
-- `workflow_last_control_reason`
+- `workflow_last_control_input`
 
 Do not clear previously collected evidence or rewrite session history.
 
-- [ ] **Step 4: Run the tests to verify pass**
+- [x] **Step 4: Run the tests to verify pass**
 
 Run:
 
@@ -119,7 +119,7 @@ python3 -m pytest tests/test_agentloop_troubleshooting_flow.py -k "paused state 
 
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add nanobot/agent/loop.py tests/test_agentloop_troubleshooting_flow.py
@@ -135,7 +135,7 @@ git commit -m "feat: persist troubleshooting workflow control state"
 - Modify: `tests/test_agentloop_investigation.py`
 - Modify: `nanobot/agent/loop.py`
 
-- [ ] **Step 1: Write failing integration tests**
+- [x] **Step 1: Write failing integration tests**
 
 Add tests that prove:
 
@@ -146,7 +146,7 @@ Add tests that prove:
 
 Keep assertions bounded and observable. Avoid over-specifying exact prose unless the wording is itself the requirement.
 
-- [ ] **Step 2: Run the integration tests to confirm failure**
+- [x] **Step 2: Run the integration tests to confirm failure**
 
 Run:
 
@@ -156,7 +156,7 @@ python3 -m pytest tests/test_agentloop_investigation.py tests/test_agentloop_tro
 
 Expected: FAIL because the current loop does not yet honor phase 1 controls.
 
-- [ ] **Step 3: Implement minimal loop integration**
+- [x] **Step 3: Implement minimal loop integration**
 
 Update `nanobot/agent/loop.py` so that:
 
@@ -167,7 +167,7 @@ Update `nanobot/agent/loop.py` so that:
 
 Reuse existing session metadata and target-expansion gates where possible.
 
-- [ ] **Step 4: Run the integration tests to verify pass**
+- [x] **Step 4: Run the integration tests to verify pass**
 
 Run:
 
@@ -177,7 +177,7 @@ python3 -m pytest tests/test_agentloop_investigation.py tests/test_agentloop_tro
 
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add nanobot/agent/loop.py tests/test_agentloop_investigation.py tests/test_agentloop_troubleshooting_flow.py
@@ -193,7 +193,7 @@ git commit -m "feat: apply workflow controls to troubleshooting investigation"
 - Modify: `tests/test_agentloop_troubleshooting_flow.py`
 - Modify: `tests/test_agentloop_investigation.py`
 
-- [ ] **Step 1: Write failing tests for control acknowledgements**
+- [x] **Step 1: Write failing tests for control acknowledgements**
 
 Add tests that prove control actions produce concise confirmation feedback, for example:
 
@@ -203,7 +203,7 @@ Add tests that prove control actions produce concise confirmation feedback, for 
 
 Also keep at least one regression assertion showing that normal troubleshooting still works when no control intent is present.
 
-- [ ] **Step 2: Run the tests to confirm failure**
+- [x] **Step 2: Run the tests to confirm failure**
 
 Run:
 
@@ -213,13 +213,13 @@ python3 -m pytest tests/test_agentloop_investigation.py tests/test_agentloop_tro
 
 Expected: FAIL because the new acknowledgement copy and flow do not exist yet.
 
-- [ ] **Step 3: Implement bounded acknowledgement rendering**
+- [x] **Step 3: Implement bounded acknowledgement rendering**
 
 Update `nanobot/agent/loop.py` so that control actions return short, operationally clear acknowledgements and explain the effective constraint without long freeform narration.
 
 Do not mix these confirmations into generic progress text; keep them explicit and bounded.
 
-- [ ] **Step 4: Run focused tests and a broader regression slice**
+- [x] **Step 4: Run focused tests and a broader regression slice**
 
 Run:
 
@@ -229,7 +229,7 @@ python3 -m pytest tests/test_agentloop_investigation.py tests/test_agentloop_tro
 
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add nanobot/agent/loop.py tests/test_agentloop_investigation.py tests/test_agentloop_troubleshooting_flow.py
@@ -245,7 +245,7 @@ git commit -m "feat: add bounded troubleshooting workflow control feedback"
 - Inspect: `tests/test_agentloop_investigation.py`
 - Inspect: `tests/test_agentloop_troubleshooting_flow.py`
 
-- [ ] **Step 1: Run the full focused test slice**
+- [x] **Step 1: Run the full focused test slice**
 
 Run:
 
@@ -255,7 +255,7 @@ python3 -m pytest tests/test_agentloop_investigation.py tests/test_agentloop_tro
 
 Expected: PASS
 
-- [ ] **Step 2: Review diff for scope creep**
+- [x] **Step 2: Review diff for scope creep**
 
 Run:
 
@@ -265,7 +265,7 @@ git diff --stat HEAD~4..HEAD
 
 Expected: changes remain concentrated in `AgentLoop` and the two troubleshooting test files.
 
-- [ ] **Step 3: Confirm non-goals remain out of scope**
+- [x] **Step 3: Confirm non-goals remain out of scope**
 
 Manually verify that the implementation does not introduce:
 
@@ -273,4 +273,3 @@ Manually verify that the implementation does not introduce:
 - complex plan editing
 - automatic remediation
 - generalized cross-host orchestration
-
