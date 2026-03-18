@@ -125,6 +125,29 @@ async def test_process_direct_resume_clears_workflow_paused_state(tmp_path: Path
 
 
 @pytest.mark.asyncio
+async def test_process_direct_new_command_clears_session_state_including_result_mode(
+    tmp_path: Path,
+) -> None:
+    loop = _make_loop(tmp_path)
+    loop.provider.chat = AsyncMock(
+        side_effect=[
+            LLMResponse(content="先看一下日志。", tool_calls=[]),
+            AssertionError("provider should not be called for /new"),
+        ]
+    )
+    loop._consolidate_memory = AsyncMock(return_value=True)  # type: ignore[method-assign]
+
+    await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
+    await loop.process_direct("先别急着下结论", session_key="cli:workflow")
+    result = await loop.process_direct("/new", session_key="cli:workflow")
+
+    assert result == "New session started."
+    reloaded = loop.sessions.get_or_create("cli:workflow")
+    assert reloaded.messages == []
+    assert reloaded.metadata == {}
+
+
+@pytest.mark.asyncio
 async def test_process_direct_change_focus_stores_bounded_focus_hint(tmp_path: Path) -> None:
     loop = _make_loop(tmp_path)
     loop.provider.chat = AsyncMock(side_effect=AssertionError("provider should not be called"))
@@ -200,7 +223,7 @@ async def test_process_direct_non_control_chat_does_not_set_workflow_control_sta
     loop = _make_loop(tmp_path)
     loop.provider.chat = AsyncMock(return_value=LLMResponse(content="done", tool_calls=[]))
 
-    result = await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
+    result = await loop.process_direct("先别急着下结论", session_key="cli:workflow")
 
     assert result
     session = loop.sessions.get_or_create("cli:workflow")
@@ -208,6 +231,30 @@ async def test_process_direct_non_control_chat_does_not_set_workflow_control_sta
     assert "workflow_focus_hint" not in session.metadata
     assert "workflow_scope_constraints" not in session.metadata
     assert "workflow_last_control_input" not in session.metadata
+    assert "workflow_result_mode" not in session.metadata
+    assert "workflow_result_mode_reason" not in session.metadata
+
+
+@pytest.mark.asyncio
+async def test_process_direct_evidence_first_requires_troubleshooting_context(
+    tmp_path: Path,
+) -> None:
+    loop = _make_loop(tmp_path)
+    loop.provider.chat = AsyncMock(
+        side_effect=[
+            LLMResponse(content="先看一下服务状态。", tool_calls=[]),
+            AssertionError("provider should not be called for a troubleshooting control turn"),
+        ]
+    )
+
+    await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
+    result = await loop.process_direct("先别急着下结论", session_key="cli:workflow")
+
+    assert result == "已切到证据优先收口；后续我会先列证据和未确认点。"
+    session = loop.sessions.get_or_create("cli:workflow")
+    assert session.metadata.get("workflow_result_mode") == "evidence_first"
+    assert session.metadata.get("workflow_result_mode_reason") == "先别急着下结论"
+    assert session.metadata.get("workflow_last_control_input") == "先别急着下结论"
 
 
 @pytest.mark.asyncio
@@ -226,11 +273,17 @@ async def test_process_direct_enables_evidence_first_result_mode(
     expected_reason: str,
 ) -> None:
     loop = _make_loop(tmp_path)
-    loop.provider.chat = AsyncMock(side_effect=AssertionError("provider should not be called"))
+    loop.provider.chat = AsyncMock(
+        side_effect=[
+            LLMResponse(content="先看一下日志。", tool_calls=[]),
+            AssertionError("provider should not be called for result-mode control"),
+        ]
+    )
 
+    await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
     result = await loop.process_direct(content, session_key="cli:workflow")
 
-    assert result
+    assert result == "已切到证据优先收口；后续我会先列证据和未确认点。"
     session = loop.sessions.get_or_create("cli:workflow")
     assert session.metadata.get("workflow_result_mode") == "evidence_first"
     assert session.metadata.get("workflow_result_mode_reason") == expected_reason
@@ -252,8 +305,14 @@ async def test_process_direct_disables_evidence_first_result_mode(
     expected_reply: str,
 ) -> None:
     loop = _make_loop(tmp_path)
-    loop.provider.chat = AsyncMock(side_effect=AssertionError("provider should not be called"))
+    loop.provider.chat = AsyncMock(
+        side_effect=[
+            LLMResponse(content="先看一下日志。", tool_calls=[]),
+            AssertionError("provider should not be called for result-mode control"),
+        ]
+    )
 
+    await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
     await loop.process_direct("先别急着下结论", session_key="cli:workflow")
     result = await loop.process_direct(content, session_key="cli:workflow")
 
@@ -282,18 +341,73 @@ async def test_evidence_first_result_mode_persists_across_followup_turns(tmp_pat
     loop = _make_loop(tmp_path)
     loop.provider.chat = AsyncMock(
         side_effect=[
-            LLMResponse(content="已记录。", tool_calls=[]),
+            LLMResponse(content="先看日志。", tool_calls=[]),
             LLMResponse(content="继续排查。", tool_calls=[]),
         ]
     )
 
+    await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
     await loop.process_direct("先别急着下结论", session_key="cli:workflow")
     await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
+    loop.sessions.invalidate("cli:workflow")
 
     session = loop.sessions.get_or_create("cli:workflow")
     assert session.metadata.get("workflow_result_mode") == "evidence_first"
     assert session.metadata.get("workflow_result_mode_reason") == "先别急着下结论"
     assert session.metadata.get("workflow_last_control_input") == "先别急着下结论"
+
+
+@pytest.mark.asyncio
+async def test_process_direct_combined_investigation_control_beats_result_mode_phrase(
+    tmp_path: Path,
+) -> None:
+    targeting = TargetingConfig.model_validate(
+        {
+            "targets": [
+                {"id": "node-a", "target": "root@10.0.0.1", "labels": ["storage", "hci"]},
+                {"id": "node-b", "target": "root@10.0.0.2", "labels": ["storage", "hci"]},
+            ],
+            "groups": [{"name": "storage-cluster", "targets": ["node-a", "node-b"]}],
+        }
+    )
+    loop = _make_loop(tmp_path, targeting=targeting)
+    loop.provider.chat = AsyncMock(side_effect=AssertionError("provider should not be called"))
+
+    result = await loop.process_direct("先只看日志，先别急着下结论", session_key="cli:cluster")
+
+    assert "日志" in result
+    session = loop.sessions.get_or_create("cli:cluster")
+    assert session.metadata.get("workflow_focus_hint") == "logs_only"
+    assert session.metadata.get("workflow_result_mode") is None
+    assert session.metadata.get("workflow_result_mode_reason") is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("content", "provider_reply"),
+    [
+        ("inspection:run", "inspection artifact body"),
+        ("生成案例摘要", "case artifact body"),
+        ("保存案例", "report artifact body"),
+    ],
+)
+async def test_workflow_result_mode_does_not_rewrite_structured_artifact_paths(
+    tmp_path: Path,
+    content: str,
+    provider_reply: str,
+) -> None:
+    loop = _make_loop(tmp_path)
+    loop.provider.chat = AsyncMock(return_value=LLMResponse(content=provider_reply, tool_calls=[]))
+    session = loop.sessions.get_or_create("cli:workflow")
+    session.metadata["workflow_result_mode"] = "evidence_first"
+    session.metadata["workflow_result_mode_reason"] = "先别急着下结论"
+    loop.sessions.save(session)
+
+    result = await loop.process_direct(content, session_key="cli:workflow")
+
+    assert result == provider_reply
+    reloaded = loop.sessions.get_or_create("cli:workflow")
+    assert reloaded.metadata.get("workflow_result_mode") == "evidence_first"
 
 
 @pytest.mark.asyncio

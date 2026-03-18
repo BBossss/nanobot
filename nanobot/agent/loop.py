@@ -696,6 +696,7 @@ class AgentLoop:
                 self._consolidating.discard(session.key)
 
             session.clear()
+            session.metadata.clear()
             self.sessions.save(session)
             self.sessions.invalidate(session.key)
             return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id,
@@ -1158,22 +1159,109 @@ class AgentLoop:
         return re.sub(r"\s+", "", content.strip().lower())
 
     @staticmethod
+    def _contains_bounded_phrase(token: str, phrase: str) -> bool:
+        """Return whether a bounded control phrase appears at the start of a turn."""
+        if token == phrase:
+            return True
+        if not token.startswith(phrase):
+            return False
+        if len(token) == len(phrase):
+            return True
+        return token[len(phrase)] in {"，", ",", "。", "；", ";", "：", ":", "、", "！", "!", "？", "?"}
+
+    @staticmethod
+    def _looks_like_troubleshooting_content(content: str) -> bool:
+        """Return whether the current turn looks like troubleshooting context."""
+        token = AgentLoop._normalized_reply_token(content)
+        markers = (
+            "出问题",
+            "报错",
+            "异常",
+            "故障",
+            "崩溃",
+            "卡住",
+            "超时",
+            "延迟",
+            "失败",
+            "日志",
+            "服务",
+            "进程",
+            "节点",
+            "集群",
+            "磁盘",
+            "网络",
+            "连接",
+            "排查",
+            "调查",
+            "恢复",
+            "诊断",
+            "告警",
+        )
+        return any(marker in token for marker in markers)
+
+    @staticmethod
     def _parse_troubleshooting_control_intent(content: str) -> str | None:
         """Map a bounded troubleshooting control phrase to an internal intent."""
         token = AgentLoop._normalized_reply_token(content)
-        if token == "暂停":
-            return "pause"
-        if token == "继续":
-            return "resume"
-        if token in {"只查日志", "先只看日志"}:
-            return "change_focus"
-        if token in {"不要多节点", "先别扩到多节点"}:
-            return "narrow_scope"
-        if token in {"先别急着下结论", "先给证据再说判断", "先别定性", "先证据后判断"}:
+        for phrase, intent in (
+            ("暂停", "pause"),
+            ("继续", "resume"),
+            ("只查日志", "change_focus"),
+            ("先只看日志", "change_focus"),
+            ("不要多节点", "narrow_scope"),
+            ("先别扩到多节点", "narrow_scope"),
+        ):
+            if AgentLoop._contains_bounded_phrase(token, phrase):
+                return intent
+        return None
+
+    @staticmethod
+    def _parse_result_mode_control_intent(content: str) -> str | None:
+        """Map a bounded evidence-first phrase to an internal intent."""
+        token = AgentLoop._normalized_reply_token(content)
+        if any(AgentLoop._contains_bounded_phrase(token, phrase) for phrase in (
+            "先别急着下结论",
+            "先给证据再说判断",
+            "先别定性",
+            "先证据后判断",
+        )):
             return "evidence_first_enable"
-        if token in {"直接说结论", "你可以下判断了", "直接给判断"}:
+        if any(AgentLoop._contains_bounded_phrase(token, phrase) for phrase in (
+            "直接说结论",
+            "你可以下判断了",
+            "直接给判断",
+        )):
             return "evidence_first_disable"
         return None
+
+    def _should_consider_result_mode_control(self, session: Session, content: str) -> bool:
+        """Return whether result-mode control parsing is allowed for this turn."""
+        if self._looks_like_troubleshooting_content(content):
+            return True
+        if session.metadata.get("workflow_result_mode") == "evidence_first":
+            return True
+        if session.metadata.get("workflow_paused") is True:
+            return True
+        if session.metadata.get("pending_target_resolution") is not None:
+            return True
+        if session.metadata.get("workflow_focus_hint"):
+            return True
+        if session.metadata.get("workflow_scope_constraints"):
+            return True
+        if session.metadata.get("expansion_confirmed") is True:
+            return True
+        return self._session_has_troubleshooting_history(session)
+
+    @staticmethod
+    def _session_has_troubleshooting_history(session: Session) -> bool:
+        """Return whether the session already contains troubleshooting signals."""
+        for message in reversed(session.get_history(max_messages=12)):
+            if message.get("role") != "user":
+                continue
+            content = str(message.get("content") or "")
+            if AgentLoop._looks_like_troubleshooting_content(content):
+                return True
+        return False
 
     def _handle_workflow_control(self, session: Session, content: str) -> str | None:
         """Persist bounded workflow control state and return a short acknowledgement."""
@@ -1181,6 +1269,8 @@ class AgentLoop:
             return None
 
         intent = self._parse_troubleshooting_control_intent(content)
+        if intent is None and self._should_consider_result_mode_control(session, content):
+            intent = self._parse_result_mode_control_intent(content)
         if intent is None:
             return None
 
