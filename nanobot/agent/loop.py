@@ -1234,10 +1234,25 @@ class AgentLoop:
             return "evidence_first_disable"
         return None
 
+    def _is_standalone_result_mode_control(self, content: str) -> bool:
+        """Return whether the current turn is only a result-mode control phrase."""
+        token = self._normalized_reply_token(content)
+        return token in {
+            "先别急着下结论",
+            "先给证据再说判断",
+            "先别定性",
+            "先证据后判断",
+            "直接说结论",
+            "你可以下判断了",
+            "直接给判断",
+        }
+
     def _should_consider_result_mode_control(self, session: Session, content: str) -> bool:
         """Return whether result-mode control parsing is allowed for this turn."""
         if self._looks_like_troubleshooting_content(content):
             return True
+        if not self._is_standalone_result_mode_control(content):
+            return False
         if session.metadata.get("workflow_result_mode") == "evidence_first":
             return True
         if session.metadata.get("workflow_paused") is True:
@@ -1250,17 +1265,16 @@ class AgentLoop:
             return True
         if session.metadata.get("expansion_confirmed") is True:
             return True
-        return self._session_has_troubleshooting_history(session)
+        return self._latest_user_turn_was_troubleshooting(session)
 
     @staticmethod
-    def _session_has_troubleshooting_history(session: Session) -> bool:
-        """Return whether the session already contains troubleshooting signals."""
+    def _latest_user_turn_was_troubleshooting(session: Session) -> bool:
+        """Return whether the immediately preceding user turn was troubleshooting-like."""
         for message in reversed(session.get_history(max_messages=12)):
             if message.get("role") != "user":
                 continue
             content = str(message.get("content") or "")
-            if AgentLoop._looks_like_troubleshooting_content(content):
-                return True
+            return AgentLoop._looks_like_troubleshooting_content(content)
         return False
 
     def _handle_workflow_control(self, session: Session, content: str) -> str | None:

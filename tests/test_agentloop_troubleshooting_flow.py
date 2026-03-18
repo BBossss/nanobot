@@ -223,7 +223,7 @@ async def test_process_direct_non_control_chat_does_not_set_workflow_control_sta
     loop = _make_loop(tmp_path)
     loop.provider.chat = AsyncMock(return_value=LLMResponse(content="done", tool_calls=[]))
 
-    result = await loop.process_direct("先别急着下结论", session_key="cli:workflow")
+    result = await loop.process_direct("我们在讨论产品设计方案，先画一下页面结构。", session_key="cli:workflow")
 
     assert result
     session = loop.sessions.get_or_create("cli:workflow")
@@ -233,6 +233,31 @@ async def test_process_direct_non_control_chat_does_not_set_workflow_control_sta
     assert "workflow_last_control_input" not in session.metadata
     assert "workflow_result_mode" not in session.metadata
     assert "workflow_result_mode_reason" not in session.metadata
+
+
+@pytest.mark.asyncio
+async def test_ordinary_non_troubleshooting_chat_does_not_enable_result_mode_after_prior_troubleshooting(
+    tmp_path: Path,
+) -> None:
+    loop = _make_loop(tmp_path)
+    loop.provider.chat = AsyncMock(
+        side_effect=[
+            LLMResponse(content="先看一下日志。", tool_calls=[]),
+            LLMResponse(content="继续讨论产品方案。", tool_calls=[]),
+        ]
+    )
+
+    await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
+    result = await loop.process_direct(
+        "先别急着下结论，但是这是产品设计讨论，先定一下页面布局。",
+        session_key="cli:workflow",
+    )
+
+    assert result == "继续讨论产品方案。"
+    session = loop.sessions.get_or_create("cli:workflow")
+    assert "workflow_result_mode" not in session.metadata
+    assert "workflow_result_mode_reason" not in session.metadata
+    assert "workflow_last_control_input" not in session.metadata
 
 
 @pytest.mark.asyncio
