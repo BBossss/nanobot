@@ -1234,10 +1234,15 @@ class AgentLoop:
             return "evidence_first_disable"
         return None
 
+    @staticmethod
+    def _strip_trailing_control_punctuation(token: str) -> str:
+        """Remove trailing punctuation so standalone control turns can stay bounded."""
+        return token.rstrip("，,。；;：:、！!？?")
+
     def _is_standalone_result_mode_control(self, content: str) -> bool:
         """Return whether the current turn is only a result-mode control phrase."""
         token = self._normalized_reply_token(content)
-        return token in {
+        return self._strip_trailing_control_punctuation(token) in {
             "先别急着下结论",
             "先给证据再说判断",
             "先别定性",

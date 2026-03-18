@@ -287,6 +287,7 @@ async def test_process_direct_evidence_first_requires_troubleshooting_context(
     ("content", "expected_reason"),
     [
         ("先别急着下结论", "先别急着下结论"),
+        ("先别急着下结论，", "先别急着下结论，"),
         ("先给证据再说判断", "先给证据再说判断"),
         ("先别定性", "先别定性"),
         ("先证据后判断", "先证据后判断"),
