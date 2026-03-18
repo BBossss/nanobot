@@ -30,7 +30,7 @@
 - Inspect: `nanobot/agent/loop.py`
 - Inspect: `docs/superpowers/specs/2026-03-19-troubleshooting-workflow-phase2-evidence-first-design.md`
 
-- [ ] **Step 1: Write the failing tests for enabling and disabling `evidence_first`**
+- [x] **Step 1: Write the failing tests for enabling and disabling `evidence_first`**
 
 Add focused `process_direct(...)` tests that prove:
 
@@ -44,11 +44,11 @@ Add focused `process_direct(...)` tests that prove:
 
 Assert that `workflow_result_mode_reason` and `workflow_last_control_input` are updated consistently with the existing phase 1 control style, and that disabling the mode clears both `workflow_result_mode` and `workflow_result_mode_reason`.
 
-- [ ] **Step 2: Add a failing test that non-control troubleshooting requests do not create result-mode state**
+- [x] **Step 2: Add a failing test that non-control troubleshooting requests do not create result-mode state**
 
 Add a direct-turn regression test showing a normal troubleshooting prompt such as `storage 集群出问题了` leaves `workflow_result_mode`, `workflow_result_mode_reason`, and `workflow_last_control_input` unset.
 
-- [ ] **Step 3: Add a failing cross-turn persistence test**
+- [x] **Step 3: Add a failing cross-turn persistence test**
 
 Add a two-turn test that:
 
@@ -58,7 +58,7 @@ Add a two-turn test that:
 
 Keep this focused on session persistence, not output shaping.
 
-- [ ] **Step 4: Run the focused tests to verify failure**
+- [x] **Step 4: Run the focused tests to verify failure**
 
 Run:
 
@@ -68,7 +68,7 @@ python3 -m pytest tests/test_agentloop_troubleshooting_flow.py -k "evidence_firs
 
 Expected: FAIL because `AgentLoop` does not yet parse or persist result-mode controls.
 
-- [ ] **Step 5: Implement minimal control parsing and state persistence**
+- [x] **Step 5: Implement minimal control parsing and state persistence**
 
 Update `nanobot/agent/loop.py` to:
 
@@ -78,7 +78,7 @@ Update `nanobot/agent/loop.py` to:
 
 Do not reshape any output yet in this task.
 
-- [ ] **Step 6: Run the focused tests to verify pass**
+- [x] **Step 6: Run the focused tests to verify pass**
 
 Run:
 
@@ -88,7 +88,7 @@ python3 -m pytest tests/test_agentloop_troubleshooting_flow.py -k "evidence_firs
 
 Expected: PASS
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add nanobot/agent/loop.py tests/test_agentloop_troubleshooting_flow.py
@@ -103,7 +103,7 @@ git commit -m "feat: add evidence-first troubleshooting result mode state"
 - Modify: `tests/test_agentloop_troubleshooting_flow.py`
 - Inspect: `nanobot/agent/loop.py`
 
-- [ ] **Step 1: Write the failing precedence tests**
+- [x] **Step 1: Write the failing precedence tests**
 
 Add tests that prove:
 
@@ -114,7 +114,7 @@ Add tests that prove:
 
 Use bounded inputs that match the spec precedence table instead of broad NLP cases.
 
-- [ ] **Step 2: Write the failing scope-boundary tests**
+- [x] **Step 2: Write the failing scope-boundary tests**
 
 Add tests that prove:
 
@@ -124,7 +124,7 @@ Add tests that prove:
 
 Keep this bounded: the goal is to prove no accidental global hook was added, not to exhaustively test every output producer.
 
-- [ ] **Step 3: Run the focused tests to verify failure**
+- [x] **Step 3: Run the focused tests to verify failure**
 
 Run:
 
@@ -134,7 +134,7 @@ python3 -m pytest tests/test_agentloop_troubleshooting_flow.py -k "precedence or
 
 Expected: FAIL because precedence and troubleshooting-only scope are not yet implemented.
 
-- [ ] **Step 4: Implement precedence and scope guards**
+- [x] **Step 4: Implement precedence and scope guards**
 
 Update `nanobot/agent/loop.py` to:
 
@@ -144,7 +144,7 @@ Update `nanobot/agent/loop.py` to:
 
 Do not add a global conversation mode.
 
-- [ ] **Step 5: Run the focused tests to verify pass**
+- [x] **Step 5: Run the focused tests to verify pass**
 
 Run:
 
@@ -154,7 +154,7 @@ python3 -m pytest tests/test_agentloop_troubleshooting_flow.py -k "precedence or
 
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add nanobot/agent/loop.py tests/test_agentloop_troubleshooting_flow.py
@@ -170,7 +170,7 @@ git commit -m "feat: enforce evidence-first troubleshooting precedence"
 - Modify: `tests/test_agentloop_troubleshooting_flow.py`
 - Modify: `nanobot/agent/loop.py`
 
-- [ ] **Step 1: Write the failing runtime-context tests**
+- [x] **Step 1: Write the failing runtime-context tests**
 
 Add tests that prove `workflow_result_mode == "evidence_first"` contributes bounded troubleshooting-only runtime context without altering investigation tool execution.
 
@@ -179,7 +179,7 @@ At minimum assert:
 - the runtime context is injected for troubleshooting turns while the mode is active
 - the context text explicitly says result shaping changes but investigation choice remains judgment-based
 
-- [ ] **Step 2: Write the failing output-shaping tests**
+- [x] **Step 2: Write the failing output-shaping tests**
 
 Add integration-style tests around `_run_agent_loop(...)` or `process_direct(...)` proving:
 
@@ -190,22 +190,22 @@ Add integration-style tests around `_run_agent_loop(...)` or `process_direct(...
 
 Mock provider outputs directly; do not depend on prompt quality to produce the right shape by accident.
 
-- [ ] **Step 3: Add a regression test that investigation capability is not weakened**
+- [x] **Step 3: Add a regression test that investigation capability is not weakened**
 
 Add a test showing that with `workflow_result_mode == "evidence_first"` active:
 
 - investigation still performs the same readonly tool calls it otherwise would
 - only the final troubleshooting reply shape changes
 
-- [ ] **Step 4: Add a regression test that structured artifact bodies stay unchanged**
+- [x] **Step 4: Add a regression test that structured artifact bodies stay unchanged**
 
 Add a test that enables `workflow_result_mode == "evidence_first"` and feeds one concrete structured artifact fixture, such as a known inspection/report/case body payload, through the final-output path. Assert the full body stays byte-for-byte identical, proving the post-processor is scoped to troubleshooting natural-language result replies only.
 
-- [ ] **Step 5: Add a regression test that ordinary non-troubleshooting replies stay unchanged**
+- [x] **Step 5: Add a regression test that ordinary non-troubleshooting replies stay unchanged**
 
 Add a test that enables `workflow_result_mode == "evidence_first"` and verifies an unrelated non-troubleshooting reply is returned unchanged, proving the post-processor does not behave like a global conversation rewriter.
 
-- [ ] **Step 6: Run the focused tests to verify failure**
+- [x] **Step 6: Run the focused tests to verify failure**
 
 Run:
 
@@ -215,7 +215,7 @@ python3 -m pytest tests/test_agentloop_investigation.py tests/test_agentloop_tro
 
 Expected: FAIL because runtime-context injection and output rewriting do not yet exist.
 
-- [ ] **Step 7: Implement bounded runtime-context and final-output shaping**
+- [x] **Step 7: Implement bounded runtime-context and final-output shaping**
 
 Update `nanobot/agent/loop.py` to:
 
@@ -229,7 +229,7 @@ Update `nanobot/agent/loop.py` to:
 
 Prefer deterministic phrase transforms and small structural additions over a generic rewriter.
 
-- [ ] **Step 8: Run the focused tests to verify pass**
+- [x] **Step 8: Run the focused tests to verify pass**
 
 Run:
 
@@ -239,7 +239,7 @@ python3 -m pytest tests/test_agentloop_investigation.py tests/test_agentloop_tro
 
 Expected: PASS
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add nanobot/agent/loop.py tests/test_agentloop_investigation.py tests/test_agentloop_troubleshooting_flow.py
@@ -255,7 +255,7 @@ git commit -m "feat: shape troubleshooting conclusions with evidence-first mode"
 - Modify: `tests/test_agentloop_investigation.py`
 - Modify: `nanobot/agent/loop.py`
 
-- [ ] **Step 1: Write the failing acknowledgement tests**
+- [x] **Step 1: Write the failing acknowledgement tests**
 
 Add tests that prove enabling and disabling result mode returns concise confirmations such as:
 
@@ -264,14 +264,14 @@ Add tests that prove enabling and disabling result mode returns concise confirma
 
 Avoid over-specifying punctuation if the wording itself is not the real requirement.
 
-- [ ] **Step 2: Write the failing compound-turn tests**
+- [x] **Step 2: Write the failing compound-turn tests**
 
 Add tests for one-turn edge cases called out by the spec review:
 
 - a message that contains both `继续` and `先证据后判断` still prioritizes `resume`
 - a troubleshooting turn that follows an enabled result mode still uses the mode on output
 
-- [ ] **Step 3: Run the broadened regression slice to verify failure**
+- [x] **Step 3: Run the broadened regression slice to verify failure**
 
 Run:
 
@@ -281,7 +281,7 @@ python3 -m pytest tests/test_agentloop_investigation.py tests/test_agentloop_tro
 
 Expected: FAIL because final acknowledgement copy and compound-turn precedence are not fully implemented.
 
-- [ ] **Step 4: Implement bounded acknowledgements and final edge-case handling**
+- [x] **Step 4: Implement bounded acknowledgements and final edge-case handling**
 
 Update `nanobot/agent/loop.py` so that:
 
@@ -289,7 +289,7 @@ Update `nanobot/agent/loop.py` so that:
 - compound-turn precedence follows the spec without mutating unrelated workflow state
 - normal troubleshooting behavior still works unchanged when result mode is absent
 
-- [ ] **Step 5: Run the broadened regression slice to verify pass**
+- [x] **Step 5: Run the broadened regression slice to verify pass**
 
 Run:
 
@@ -299,7 +299,7 @@ python3 -m pytest tests/test_agentloop_investigation.py tests/test_agentloop_tro
 
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add nanobot/agent/loop.py tests/test_agentloop_investigation.py tests/test_agentloop_troubleshooting_flow.py
@@ -316,7 +316,7 @@ git commit -m "feat: finalize evidence-first troubleshooting feedback"
 - Inspect: `tests/test_agentloop_investigation.py`
 - Inspect: `tests/test_agentloop_troubleshooting_flow.py`
 
-- [ ] **Step 1: Run the targeted verification suite**
+- [x] **Step 1: Run the targeted verification suite**
 
 Run:
 
@@ -326,7 +326,7 @@ python3 -m pytest tests/test_agentloop_investigation.py tests/test_agentloop_tro
 
 Expected: PASS
 
-- [ ] **Step 2: Run one adjacent regression slice if the implementation touched shared flow code**
+- [x] **Step 2: Run one adjacent regression slice if the implementation touched shared flow code**
 
 Run:
 
@@ -336,11 +336,11 @@ python3 -m pytest tests/test_commands.py -v
 
 Expected: PASS, or document clearly if unrelated failures already exist.
 
-- [ ] **Step 3: Mark the completed plan checkboxes**
+- [x] **Step 3: Mark the completed plan checkboxes**
 
 Update this plan file so every completed step is checked off and reflects reality.
 
-- [ ] **Step 4: Commit the final plan sync if needed**
+- [x] **Step 4: Commit the final plan sync if needed**
 
 ```bash
 git add docs/superpowers/plans/2026-03-19-troubleshooting-workflow-phase2-evidence-first.md
