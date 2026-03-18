@@ -125,6 +125,24 @@ async def test_process_direct_resume_clears_workflow_paused_state(tmp_path: Path
 
 
 @pytest.mark.asyncio
+async def test_process_direct_resume_takes_precedence_over_compound_evidence_first_phrase(
+    tmp_path: Path,
+) -> None:
+    loop = _make_loop(tmp_path)
+    loop.provider.chat = AsyncMock(side_effect=AssertionError("provider should not be called"))
+
+    await loop.process_direct("暂停", session_key="cli:workflow")
+    result = await loop.process_direct("继续，先证据后判断", session_key="cli:workflow")
+
+    assert "继续" in result
+    session = loop.sessions.get_or_create("cli:workflow")
+    assert session.metadata.get("workflow_paused") is False
+    assert session.metadata.get("workflow_result_mode") is None
+    assert session.metadata.get("workflow_result_mode_reason") is None
+    assert session.metadata.get("workflow_last_control_input") == "继续，先证据后判断"
+
+
+@pytest.mark.asyncio
 async def test_process_direct_new_command_clears_session_state_including_result_mode(
     tmp_path: Path,
 ) -> None:
@@ -351,7 +369,7 @@ async def test_process_direct_evidence_first_requires_troubleshooting_context(
     await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
     result = await loop.process_direct("先别急着下结论", session_key="cli:workflow")
 
-    assert result == "已切到证据优先收口；后续我会先列证据和未确认点。"
+    assert result == "后续先按证据收口；如果判断还不够稳，我会先列证据和未确认点。"
     session = loop.sessions.get_or_create("cli:workflow")
     assert session.metadata.get("workflow_result_mode") == "evidence_first"
     assert session.metadata.get("workflow_result_mode_reason") == "先别急着下结论"
@@ -385,7 +403,7 @@ async def test_process_direct_enables_evidence_first_result_mode(
     await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
     result = await loop.process_direct(content, session_key="cli:workflow")
 
-    assert result == "已切到证据优先收口；后续我会先列证据和未确认点。"
+    assert result == "后续先按证据收口；如果判断还不够稳，我会先列证据和未确认点。"
     session = loop.sessions.get_or_create("cli:workflow")
     assert session.metadata.get("workflow_result_mode") == "evidence_first"
     assert session.metadata.get("workflow_result_mode_reason") == expected_reason

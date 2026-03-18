@@ -300,6 +300,31 @@ async def test_workflow_result_mode_injects_bounded_runtime_context_without_chan
 
 
 @pytest.mark.asyncio
+async def test_workflow_result_mode_applies_to_followup_troubleshooting_turn_after_enable(
+    tmp_path: Path,
+) -> None:
+    loop = _make_loop(tmp_path, max_rounds=4)
+    loop.provider.chat = AsyncMock(
+        return_value=LLMResponse(
+            content="已确认事实：日志里连续报错；关键证据：node-a 上的 logrotate 报错。根因已确认，就是日志轮转失败。",
+            tool_calls=[],
+        )
+    )
+    session = loop.sessions.get_or_create("cli:investigation")
+    session.metadata["workflow_result_mode"] = "evidence_first"
+    session.metadata["workflow_result_mode_reason"] = "先别急着下结论"
+    loop.sessions.save(session)
+
+    result = await loop.process_direct("storage 集群出问题了", session_key="cli:investigation")
+
+    assert result.startswith("已确认事实：")
+    assert result.index("已确认事实：") < result.index("当前倾向")
+    assert "根因已确认" not in result
+    assert "不确定点" in result
+    assert "下一步" in result
+
+
+@pytest.mark.asyncio
 async def test_resume_allows_investigation_to_continue_from_existing_session_context(tmp_path: Path) -> None:
     loop = _make_loop(tmp_path, max_rounds=4)
     provider_calls: list[list[dict]] = []

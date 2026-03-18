@@ -1369,7 +1369,7 @@ class AgentLoop:
         if intent == "evidence_first_enable":
             session.metadata["workflow_result_mode"] = "evidence_first"
             session.metadata["workflow_result_mode_reason"] = content.strip()
-            return "已切到证据优先收口；后续我会先列证据和未确认点。"
+            return "后续先按证据收口；如果判断还不够稳，我会先列证据和未确认点。"
         if intent == "evidence_first_disable":
             session.metadata.pop("workflow_result_mode", None)
             session.metadata.pop("workflow_result_mode_reason", None)
