@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from nanobot.agent.loop import AgentLoop
+from nanobot.agent.context import ContextBuilder
 from nanobot.bus.queue import MessageBus
 from nanobot.config.schema import ExecToolConfig
 from nanobot.providers.base import LLMResponse, ToolCallRequest
@@ -256,6 +257,46 @@ async def test_paused_session_short_circuits_without_new_investigation_tool_call
     assert "暂停" in result
     assert loop.provider.chat.await_count == 0
     assert loop.tools.execute.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_workflow_result_mode_injects_bounded_runtime_context_without_changing_tool_calls(
+    tmp_path: Path,
+) -> None:
+    loop = _make_loop(tmp_path, max_rounds=4)
+    loop.provider.chat = AsyncMock(
+        side_effect=[
+            LLMResponse(
+                content="先看日志。",
+                tool_calls=[ToolCallRequest(id="1", name="read_log_tail", arguments={"path": "/var/log/app.log"})],
+            ),
+            LLMResponse(content="根因已确认，就是日志轮转失败。", tool_calls=[]),
+        ]
+    )
+    loop.tools.execute = AsyncMock(return_value="log evidence")
+    session = loop.sessions.get_or_create("cli:investigation")
+    session.metadata["workflow_result_mode"] = "evidence_first"
+    session.metadata["workflow_result_mode_reason"] = "先别急着下结论"
+    loop.sessions.save(session)
+
+    final_content = await loop.process_direct("storage 集群出问题了", session_key="cli:investigation")
+
+    assert final_content
+    assert loop.tools.execute.await_count == 1
+    first_call_messages = loop.provider.chat.await_args_list[0].kwargs["messages"]
+    runtime_contexts = [
+        str(message["content"])
+        for message in first_call_messages
+        if message.get("role") == "user"
+        and isinstance(message.get("content"), str)
+        and str(message["content"]).startswith(ContextBuilder._RUNTIME_CONTEXT_TAG)
+    ]
+    assert len(runtime_contexts) == 2
+    workflow_context = next(item for item in runtime_contexts if "Workflow Controls:" in item)
+    assert "证据优先收口" in workflow_context
+    assert "结果收口" in workflow_context
+    assert "调查动作选择仍然是判断" in workflow_context or "investigation choice remains judgment-based" in workflow_context
+    assert "read_log_tail" in str(first_call_messages)
 
 
 @pytest.mark.asyncio

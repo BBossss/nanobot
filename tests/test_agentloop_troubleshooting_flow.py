@@ -529,6 +529,137 @@ async def test_workflow_result_mode_does_not_rewrite_structured_artifact_paths(
 
 
 @pytest.mark.asyncio
+async def test_evidence_first_result_shaping_downgrades_strong_conclusion_and_keeps_evidence_first(
+    tmp_path: Path,
+) -> None:
+    loop = _make_loop(tmp_path)
+    loop.provider.chat = AsyncMock(
+        return_value=LLMResponse(
+            content="已确认事实：日志里连续出现轮转失败；关键证据：node-a 上的 logrotate 报错。根因已确认，就是日志轮转失败。",
+            tool_calls=[],
+        )
+    )
+    session = loop.sessions.get_or_create("cli:workflow")
+    session.metadata["workflow_result_mode"] = "evidence_first"
+    session.metadata["workflow_result_mode_reason"] = "先别急着下结论"
+    loop.sessions.save(session)
+
+    result = await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
+
+    assert result.startswith("已确认事实：")
+    assert result.index("已确认事实：") < result.index("当前倾向")
+    assert "根因已确认" not in result
+    assert "日志轮转失败" in result
+    assert "不确定点" in result
+    assert "下一步" in result
+
+
+@pytest.mark.asyncio
+async def test_evidence_first_result_shaping_adds_minimal_uncertainty_and_next_step_when_missing(
+    tmp_path: Path,
+) -> None:
+    loop = _make_loop(tmp_path)
+    loop.provider.chat = AsyncMock(
+        return_value=LLMResponse(
+            content="日志里有报错；node-a 的服务状态异常。问题已经定位到 node-a。",
+            tool_calls=[],
+        )
+    )
+    session = loop.sessions.get_or_create("cli:workflow")
+    session.metadata["workflow_result_mode"] = "evidence_first"
+    session.metadata["workflow_result_mode_reason"] = "先给证据再说判断"
+    loop.sessions.save(session)
+
+    result = await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
+
+    assert "当前倾向" in result
+    assert "不确定点" in result
+    assert "下一步" in result
+    assert result.index("日志里有报错") < result.index("当前倾向")
+
+
+@pytest.mark.asyncio
+async def test_evidence_first_result_shaping_omits_tendency_when_evidence_is_weak(
+    tmp_path: Path,
+) -> None:
+    loop = _make_loop(tmp_path)
+    loop.provider.chat = AsyncMock(return_value=LLMResponse(content="只有一条日志报错。可以确定就是服务配置错误。", tool_calls=[]))
+    session = loop.sessions.get_or_create("cli:workflow")
+    session.metadata["workflow_result_mode"] = "evidence_first"
+    session.metadata["workflow_result_mode_reason"] = "先别急着下结论"
+    loop.sessions.save(session)
+
+    result = await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
+
+    assert "当前倾向" not in result
+    assert "可以确定就是服务配置错误" not in result
+    assert "日志报错" in result
+    assert "不确定点" in result
+    assert "下一步" in result
+
+
+@pytest.mark.asyncio
+async def test_workflow_result_mode_keeps_investigation_tool_calls_and_only_changes_final_shape(
+    tmp_path: Path,
+) -> None:
+    loop = _make_loop(tmp_path)
+    loop.provider.chat = AsyncMock(
+        side_effect=[
+            LLMResponse(
+                content="先看日志。",
+                tool_calls=[ToolCallRequest(id="1", name="read_log_tail", arguments={"path": "/var/log/app.log"})],
+            ),
+            LLMResponse(content="根因已确认，就是日志轮转失败。", tool_calls=[]),
+        ]
+    )
+    loop.tools.execute = AsyncMock(return_value="same readonly evidence")
+    session = loop.sessions.get_or_create("cli:workflow")
+    session.metadata["workflow_result_mode"] = "evidence_first"
+    session.metadata["workflow_result_mode_reason"] = "先别急着下结论"
+    loop.sessions.save(session)
+
+    result = await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
+
+    assert loop.tools.execute.await_count == 1
+    assert loop.tools.execute.await_args_list[0].args[0] == "read_log_tail"
+    assert loop.tools.execute.await_args_list[0].args[1] == {"path": "/var/log/app.log"}
+    assert "当前倾向" in result
+
+
+@pytest.mark.asyncio
+async def test_workflow_result_mode_does_not_rewrite_structured_artifact_body(
+    tmp_path: Path,
+) -> None:
+    loop = _make_loop(tmp_path)
+    body = """---\ntype: inspection_report\ncase_id: INC-20260319-001\n---\n# Inspection report\n\n## Evidence\n- [node-a/log:42] logrotate failed\n\n## Conclusion\nPlease review report details.\n"""
+    loop.provider.chat = AsyncMock(return_value=LLMResponse(content=body, tool_calls=[]))
+    session = loop.sessions.get_or_create("cli:workflow")
+    session.metadata["workflow_result_mode"] = "evidence_first"
+    session.metadata["workflow_result_mode_reason"] = "先别急着下结论"
+    loop.sessions.save(session)
+
+    result = await loop.process_direct("inspection:run", session_key="cli:workflow")
+
+    assert result == body.strip()
+
+
+@pytest.mark.asyncio
+async def test_workflow_result_mode_does_not_change_unrelated_non_troubleshooting_reply(
+    tmp_path: Path,
+) -> None:
+    loop = _make_loop(tmp_path)
+    loop.provider.chat = AsyncMock(return_value=LLMResponse(content="我们先讨论产品定价方案。", tool_calls=[]))
+    session = loop.sessions.get_or_create("cli:workflow")
+    session.metadata["workflow_result_mode"] = "evidence_first"
+    session.metadata["workflow_result_mode_reason"] = "先别急着下结论"
+    loop.sessions.save(session)
+
+    result = await loop.process_direct("先别急着下结论，我们先讨论产品定价方案。", session_key="cli:workflow")
+
+    assert result == "我们先讨论产品定价方案。"
+
+
+@pytest.mark.asyncio
 async def test_agent_loop_marks_repeated_log_sampling_as_stale(tmp_path: Path) -> None:
     loop = _make_loop(tmp_path, max_rounds=8)
     loop.provider.chat = AsyncMock(

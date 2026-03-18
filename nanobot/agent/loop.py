@@ -788,7 +788,7 @@ class AgentLoop:
                 metadata=msg.metadata,
             ),
         )
-        workflow_runtime_context = self._build_workflow_runtime_context(session)
+        workflow_runtime_context = self._build_workflow_runtime_context(session, content=msg.content)
         if workflow_runtime_context:
             initial_messages.insert(-1, {"role": "user", "content": workflow_runtime_context})
 
@@ -805,6 +805,13 @@ class AgentLoop:
 
         if final_content is None:
             final_content = "I've completed processing but have no response to give."
+
+        final_content = self._shape_evidence_first_result(
+            session=session,
+            user_content=msg.content,
+            final_content=final_content,
+            messages=all_msgs,
+        )
 
         self._save_turn(session, all_msgs, 1 + len(history))
         if confirmed_scope_active:
@@ -1473,7 +1480,7 @@ class AgentLoop:
         session.add_message("assistant", assistant_content)
 
     @staticmethod
-    def _build_workflow_runtime_context(session: Session) -> str | None:
+    def _build_workflow_runtime_context(session: Session, content: str | None = None) -> str | None:
         """Build bounded workflow hints that shape investigation planning for this turn."""
         lines: list[str] = []
         focus_hint = session.metadata.get("workflow_focus_hint")
@@ -1487,6 +1494,15 @@ class AgentLoop:
                 "- Scope constraint: stay in single-target troubleshooting mode for this turn; "
                 "do not expand or reuse multi-target scope unless the user explicitly changes it."
             )
+        if (
+            session.metadata.get("workflow_result_mode") == "evidence_first"
+            and content is not None
+            and AgentLoop._looks_like_troubleshooting_content(content)
+        ):
+            lines.append(
+                "- Result shaping: 证据优先收口会改变结果收口方式，但不改变调查动作选择。 "
+                "This only changes how the result is presented; 调查动作选择仍然是判断驱动的，不因该模式改变。"
+            )
         if not lines:
             return None
         return (
@@ -1494,3 +1510,115 @@ class AgentLoop:
             + "\nWorkflow Controls:\n"
             + "\n".join(lines)
         )
+
+    @staticmethod
+    def _looks_like_structured_artifact_body(content: str) -> bool:
+        """Return whether the reply looks like a structured artifact body that should stay untouched."""
+        text = content.strip()
+        if not text:
+            return False
+        if text.startswith("---\n") and "\n---" in text:
+            return True
+        if re.search(r"(?m)^#{1,6}\s+\S", text):
+            return True
+        if re.search(r"(?m)^\s*-\s+\[[^\]]+\]\s+\S", text):
+            return True
+        if re.search(r"(?m)^\s*[A-Za-z][\w -]{1,40}:\s+\S+", text) and "\n" in text:
+            return True
+        return False
+
+    @staticmethod
+    def _split_troubleshooting_evidence_and_conclusion(content: str) -> tuple[str, str | None]:
+        """Split a reply into evidence text and a downgraded tendency phrase, if present."""
+        patterns: tuple[tuple[re.Pattern[str], str], ...] = (
+            (re.compile(r"根因已确认[，,]*(?:就是|是)(?P<target>[^。！？\n，,;；]+)"), "现有证据更偏向{target}"),
+            (re.compile(r"问题已经定位到(?P<target>[^。！？\n，,;；]+)"), "问题更集中在{target}"),
+            (re.compile(r"可以确定(?:就是|是)(?P<target>[^。！？\n，,;；]+)"), "现有证据更偏向{target}"),
+        )
+        earliest: tuple[int, int, re.Match[str], str] | None = None
+        for pattern, template in patterns:
+            match = pattern.search(content)
+            if match is None:
+                continue
+            candidate = (match.start(), match.end(), match, template)
+            if earliest is None or candidate[0] < earliest[0]:
+                earliest = candidate
+        if earliest is None:
+            return content.strip(), None
+
+        start, _end, match, template = earliest
+        evidence = content[:start].rstrip("，,。；; \n")
+        target = str(match.groupdict().get("target", "")).strip("，,。；; \n")
+        tendency = template.format(target=target)
+        if tendency and not tendency.endswith("。"):
+            tendency = tendency + "。"
+        return evidence, tendency
+
+    @staticmethod
+    def _count_evidence_signals(content: str) -> int:
+        """Count coarse evidence-bearing segments to decide whether a tendency is justified."""
+        signals = 0
+        for chunk in re.split(r"[。\n！？!?；;]+", content):
+            token = chunk.strip()
+            if not token:
+                continue
+            if any(marker in token for marker in ("已确认事实", "关键证据", "事实", "证据")):
+                signals += 1
+                continue
+            if any(marker in token for marker in ("日志", "报错", "错误", "异常", "超时", "失败", "卡住", "告警", "堆栈", "服务状态", "进程状态", "磁盘状态", "网络状态", "对比", "检查", "看到", "发现", "显示")):
+                signals += 1
+        return signals
+
+    @staticmethod
+    def _ensure_minimal_uncertainty_and_next_step(content: str) -> str:
+        """Append minimal uncertainty and next-step lines if they are missing."""
+        lines = [line.rstrip() for line in content.strip().splitlines() if line.strip()]
+        combined = "\n".join(lines)
+        if not any(marker in combined for marker in ("不确定", "仍需", "还需要", "还要", "未确认", "风险", "待验证")):
+            lines.append("不确定点：还需要再核对一轮只读证据。")
+        if not any(marker in combined for marker in ("下一步", "建议", "验证", "先核对", "再确认", "继续检查")):
+            lines.append("下一步：建议先补一条最能验证当前判断的只读检查。")
+        return "\n".join(lines)
+
+    def _is_troubleshooting_result_candidate(self, content: str) -> bool:
+        """Return whether a troubleshooting reply should be reshaped in evidence-first mode."""
+        if not content.strip():
+            return False
+        if self._looks_like_structured_artifact_body(content):
+            return False
+        return self._looks_like_troubleshooting_content(content) or any(
+            phrase in content for phrase in ("当前倾向", "根因已确认", "问题已经定位到", "可以确定就是")
+        )
+
+    def _shape_evidence_first_result(
+        self,
+        *,
+        session: Session | None,
+        user_content: str,
+        final_content: str | None,
+        messages: list[dict[str, Any]] | None = None,
+    ) -> str | None:
+        """Boundedly reshape troubleshooting conclusions when evidence-first mode is active."""
+        if final_content is None or session is None:
+            return final_content
+        if session.metadata.get("workflow_result_mode") != "evidence_first":
+            return final_content
+        if not self._looks_like_troubleshooting_content(user_content):
+            return final_content
+        if not self._is_troubleshooting_result_candidate(final_content):
+            return final_content
+
+        evidence_text, tendency_text = self._split_troubleshooting_evidence_and_conclusion(final_content)
+        evidence_signals = self._count_evidence_signals(evidence_text or final_content)
+        tool_evidence_signals = 0
+        for message in messages or []:
+            if message.get("role") != "tool":
+                continue
+            tool_content = str(message.get("content") or "")
+            if tool_content.strip():
+                tool_evidence_signals += 1
+
+        body = evidence_text.strip() or final_content.strip()
+        if tendency_text and (evidence_signals >= 2 or (evidence_signals >= 1 and tool_evidence_signals >= 1)):
+            body = f"{body}\n当前倾向：{tendency_text}"
+        return self._ensure_minimal_uncertainty_and_next_step(body)
