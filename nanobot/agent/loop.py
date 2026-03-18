@@ -1206,7 +1206,7 @@ class AgentLoop:
     def _looks_like_troubleshooting_content(content: str) -> bool:
         """Return whether the current turn looks like troubleshooting context."""
         token = AgentLoop._normalized_reply_token(content)
-        markers = (
+        strong_markers = (
             "出问题",
             "报错",
             "异常",
@@ -1216,18 +1216,39 @@ class AgentLoop:
             "超时",
             "延迟",
             "服务状态",
-            "进程",
-            "节点",
-            "集群",
-            "磁盘",
-            "网络",
             "排查",
             "调查",
             "诊断",
             "告警",
         )
-        if any(marker in token for marker in markers):
+        if any(marker in token for marker in strong_markers):
             return True
+        resource_nouns = ("网络", "节点", "集群", "进程", "磁盘")
+        if any(noun in token for noun in resource_nouns):
+            resource_cues = (
+                "状态",
+                "异常",
+                "故障",
+                "报错",
+                "告警",
+                "超时",
+                "崩溃",
+                "卡住",
+                "恢复",
+                "排查",
+                "调查",
+                "诊断",
+                "检查",
+                "看",
+                "查",
+                "对比",
+                "快照",
+                "不通",
+                "丢包",
+                "连接不上",
+                "启动失败",
+            )
+            return any(cue in token for cue in resource_cues)
         if "日志" in token:
             log_cues = (
                 "排查",
