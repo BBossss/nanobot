@@ -1,5 +1,11 @@
 # Repository Guidelines
 
+## Agent Priority
+- 本项目的第一目标是构建强大的排障能力。
+- 任何交互设计、工作流控制、展示优化、文档表达或辅助能力，都不应削弱排障深度、证据质量和调查闭环。
+- 当“更强可控性 / 更强展示性 / 更强产品感”和“更强排障能力”发生冲突时，优先保证排障能力。
+- 默认优先增强调查能力、证据收集能力、目标感知执行能力和排障结论质量，而不是优先增强表层交互。
+
 ## Project Structure & Module Organization
 - `nanobot/`: 核心包，包含 `agent loop`、tools、policies、channels、config、skills、templates。
 - `tests/`: pytest 单元/集成测试。
