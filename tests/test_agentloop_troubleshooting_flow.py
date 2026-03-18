@@ -555,6 +555,26 @@ async def test_evidence_first_result_shaping_downgrades_strong_conclusion_and_ke
 
 
 @pytest.mark.asyncio
+async def test_evidence_first_result_shaping_downgrades_conclusion_only_reply(
+    tmp_path: Path,
+) -> None:
+    loop = _make_loop(tmp_path)
+    loop.provider.chat = AsyncMock(return_value=LLMResponse(content="根因已确认，就是日志轮转失败。", tool_calls=[]))
+    session = loop.sessions.get_or_create("cli:workflow")
+    session.metadata["workflow_result_mode"] = "evidence_first"
+    session.metadata["workflow_result_mode_reason"] = "先别急着下结论"
+    loop.sessions.save(session)
+
+    result = await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
+
+    assert result.startswith("当前倾向：")
+    assert "根因已确认" not in result
+    assert "日志轮转失败" in result
+    assert "不确定点" in result
+    assert "下一步" in result
+
+
+@pytest.mark.asyncio
 async def test_evidence_first_result_shaping_adds_minimal_uncertainty_and_next_step_when_missing(
     tmp_path: Path,
 ) -> None:
@@ -638,7 +658,7 @@ async def test_workflow_result_mode_does_not_rewrite_structured_artifact_body(
     session.metadata["workflow_result_mode_reason"] = "先别急着下结论"
     loop.sessions.save(session)
 
-    result = await loop.process_direct("inspection:run", session_key="cli:workflow")
+    result = await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
 
     assert result == body.strip()
 

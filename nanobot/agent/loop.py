@@ -810,7 +810,6 @@ class AgentLoop:
             session=session,
             user_content=msg.content,
             final_content=final_content,
-            messages=all_msgs,
         )
 
         self._save_turn(session, all_msgs, 1 + len(history))
@@ -1523,7 +1522,7 @@ class AgentLoop:
             return True
         if re.search(r"(?m)^\s*-\s+\[[^\]]+\]\s+\S", text):
             return True
-        if re.search(r"(?m)^\s*[A-Za-z][\w -]{1,40}:\s+\S+", text) and "\n" in text:
+        if re.search(r"(?m)^\s*[A-Za-z][\w \-]{1,40}:\s+\S+", text) and "\n" in text:
             return True
         return False
 
@@ -1596,7 +1595,6 @@ class AgentLoop:
         session: Session | None,
         user_content: str,
         final_content: str | None,
-        messages: list[dict[str, Any]] | None = None,
     ) -> str | None:
         """Boundedly reshape troubleshooting conclusions when evidence-first mode is active."""
         if final_content is None or session is None:
@@ -1609,16 +1607,14 @@ class AgentLoop:
             return final_content
 
         evidence_text, tendency_text = self._split_troubleshooting_evidence_and_conclusion(final_content)
-        evidence_signals = self._count_evidence_signals(evidence_text or final_content)
-        tool_evidence_signals = 0
-        for message in messages or []:
-            if message.get("role") != "tool":
-                continue
-            tool_content = str(message.get("content") or "")
-            if tool_content.strip():
-                tool_evidence_signals += 1
+        evidence_text = evidence_text.strip()
+        evidence_signals = self._count_evidence_signals(evidence_text)
 
-        body = evidence_text.strip() or final_content.strip()
-        if tendency_text and (evidence_signals >= 2 or (evidence_signals >= 1 and tool_evidence_signals >= 1)):
-            body = f"{body}\n当前倾向：{tendency_text}"
+        if tendency_text:
+            if evidence_text and evidence_signals >= 2:
+                body = f"{evidence_text}\n当前倾向：{tendency_text}"
+            else:
+                body = evidence_text or f"当前倾向：{tendency_text}"
+        else:
+            body = evidence_text or final_content.strip()
         return self._ensure_minimal_uncertainty_and_next_step(body)
