@@ -1215,7 +1215,6 @@ class AgentLoop:
             "卡住",
             "超时",
             "延迟",
-            "日志",
             "服务状态",
             "进程",
             "节点",
@@ -1227,7 +1226,28 @@ class AgentLoop:
             "诊断",
             "告警",
         )
-        return any(marker in token for marker in markers)
+        if any(marker in token for marker in markers):
+            return True
+        if "日志" in token:
+            log_cues = (
+                "排查",
+                "调查",
+                "诊断",
+                "报错",
+                "异常",
+                "故障",
+                "告警",
+                "超时",
+                "崩溃",
+                "卡住",
+                "错误",
+                "恢复",
+                "看日志",
+                "查日志",
+                "读日志",
+            )
+            return any(cue in token for cue in log_cues)
+        return False
 
     @staticmethod
     def _parse_troubleshooting_control_intent(content: str) -> str | None:

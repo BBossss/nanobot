@@ -255,6 +255,25 @@ async def test_generic_business_chat_with_overlapping_words_does_not_enable_resu
 
 
 @pytest.mark.asyncio
+async def test_log_product_discussion_does_not_enable_result_mode(
+    tmp_path: Path,
+) -> None:
+    loop = _make_loop(tmp_path)
+    loop.provider.chat = AsyncMock(return_value=LLMResponse(content="继续讨论日志采集产品路线。", tool_calls=[]))
+
+    result = await loop.process_direct(
+        "先别急着下结论，我们先讨论日志采集产品路线。",
+        session_key="cli:workflow",
+    )
+
+    assert result == "继续讨论日志采集产品路线。"
+    session = loop.sessions.get_or_create("cli:workflow")
+    assert "workflow_result_mode" not in session.metadata
+    assert "workflow_result_mode_reason" not in session.metadata
+    assert "workflow_last_control_input" not in session.metadata
+
+
+@pytest.mark.asyncio
 async def test_ordinary_non_troubleshooting_chat_does_not_enable_result_mode_after_prior_troubleshooting(
     tmp_path: Path,
 ) -> None:
