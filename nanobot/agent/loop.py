@@ -810,6 +810,7 @@ class AgentLoop:
             session=session,
             user_content=msg.content,
             final_content=final_content,
+            messages=all_msgs,
         )
 
         self._save_turn(session, all_msgs, 1 + len(history))
@@ -1518,8 +1519,6 @@ class AgentLoop:
             return False
         if text.startswith("---\n") and "\n---" in text:
             return True
-        if re.search(r"(?m)^#{1,6}\s+\S", text):
-            return True
         if re.search(r"(?m)^\s*-\s+\[[^\]]+\]\s+\S", text):
             return True
         if re.search(r"(?m)^\s*[A-Za-z][\w \-]{1,40}:\s+\S+", text) and "\n" in text:
@@ -1527,8 +1526,8 @@ class AgentLoop:
         return False
 
     @staticmethod
-    def _split_troubleshooting_evidence_and_conclusion(content: str) -> tuple[str, str | None]:
-        """Split a reply into evidence text and a downgraded tendency phrase, if present."""
+    def _split_troubleshooting_evidence_and_conclusion(content: str) -> tuple[str, str | None, str]:
+        """Split a reply into evidence text, a downgraded tendency phrase, and trailing content."""
         patterns: tuple[tuple[re.Pattern[str], str], ...] = (
             (re.compile(r"根因已确认[，,]*(?:就是|是)(?P<target>[^。！？\n，,;；]+)"), "现有证据更偏向{target}"),
             (re.compile(r"问题已经定位到(?P<target>[^。！？\n，,;；]+)"), "问题更集中在{target}"),
@@ -1543,15 +1542,16 @@ class AgentLoop:
             if earliest is None or candidate[0] < earliest[0]:
                 earliest = candidate
         if earliest is None:
-            return content.strip(), None
+            return content.strip(), None, ""
 
-        start, _end, match, template = earliest
+        start, end, match, template = earliest
         evidence = content[:start].rstrip("，,。；; \n")
+        suffix = content[end:].lstrip("，,。；; \n")
         target = str(match.groupdict().get("target", "")).strip("，,。；; \n")
         tendency = template.format(target=target)
         if tendency and not tendency.endswith("。"):
             tendency = tendency + "。"
-        return evidence, tendency
+        return evidence, tendency, suffix
 
     @staticmethod
     def _count_evidence_signals(content: str) -> int:
@@ -1567,6 +1567,23 @@ class AgentLoop:
             if any(marker in token for marker in ("日志", "报错", "错误", "异常", "超时", "失败", "卡住", "告警", "堆栈", "服务状态", "进程状态", "磁盘状态", "网络状态", "对比", "检查", "看到", "发现", "显示")):
                 signals += 1
         return signals
+
+    @staticmethod
+    def _summarize_tool_evidence(messages: list[dict[str, Any]] | None) -> str | None:
+        """Build a minimal visible evidence line from current-turn tool results when needed."""
+        if not messages:
+            return None
+        for message in messages:
+            if message.get("role") != "tool":
+                continue
+            content = str(message.get("content") or "").strip()
+            if not content:
+                continue
+            summary = re.split(r"[\n。！？!?]", content, maxsplit=1)[0].strip()
+            if summary:
+                return f"已确认事实：本轮只读调查拿到了证据输出，例如 {summary[:80]}。"
+            return "已确认事实：本轮只读调查拿到了证据输出。"
+        return None
 
     @staticmethod
     def _ensure_minimal_uncertainty_and_next_step(content: str) -> str:
@@ -1595,6 +1612,7 @@ class AgentLoop:
         session: Session | None,
         user_content: str,
         final_content: str | None,
+        messages: list[dict[str, Any]] | None = None,
     ) -> str | None:
         """Boundedly reshape troubleshooting conclusions when evidence-first mode is active."""
         if final_content is None or session is None:
@@ -1606,15 +1624,24 @@ class AgentLoop:
         if not self._is_troubleshooting_result_candidate(final_content):
             return final_content
 
-        evidence_text, tendency_text = self._split_troubleshooting_evidence_and_conclusion(final_content)
-        evidence_text = evidence_text.strip()
-        evidence_signals = self._count_evidence_signals(evidence_text)
+        evidence_text, tendency_text, suffix_text = self._split_troubleshooting_evidence_and_conclusion(final_content)
+        sections = [part.strip() for part in (evidence_text, suffix_text) if part.strip()]
+        if not sections and tendency_text:
+            if tool_summary := self._summarize_tool_evidence(messages):
+                sections.append(tool_summary)
+        body = "\n".join(sections).strip()
+        evidence_signals = self._count_evidence_signals(body)
+        has_explicit_evidence_labels = any(marker in body for marker in ("已确认事实", "关键证据"))
 
         if tendency_text:
-            if evidence_text and evidence_signals >= 2:
-                body = f"{evidence_text}\n当前倾向：{tendency_text}"
-            else:
-                body = evidence_text or f"当前倾向：{tendency_text}"
-        else:
-            body = evidence_text or final_content.strip()
+            if body and (evidence_signals >= 2 or has_explicit_evidence_labels):
+                body = f"{body}\n当前倾向：{tendency_text}"
+            elif not body:
+                tool_summary = self._summarize_tool_evidence(messages)
+                if tool_summary:
+                    body = f"{tool_summary}\n当前倾向：{tendency_text}"
+                else:
+                    body = "证据缺口：当前回复未展开可核对证据。"
+        if not body:
+            body = final_content.strip()
         return self._ensure_minimal_uncertainty_and_next_step(body)

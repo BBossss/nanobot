@@ -567,9 +567,9 @@ async def test_evidence_first_result_shaping_downgrades_conclusion_only_reply(
 
     result = await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
 
-    assert result.startswith("当前倾向：")
+    assert "当前倾向" not in result
     assert "根因已确认" not in result
-    assert "日志轮转失败" in result
+    assert "证据缺口" in result
     assert "不确定点" in result
     assert "下一步" in result
 
@@ -643,7 +643,9 @@ async def test_workflow_result_mode_keeps_investigation_tool_calls_and_only_chan
     assert loop.tools.execute.await_count == 1
     assert loop.tools.execute.await_args_list[0].args[0] == "read_log_tail"
     assert loop.tools.execute.await_args_list[0].args[1] == {"path": "/var/log/app.log"}
+    assert "已确认事实：" in result
     assert "当前倾向" in result
+    assert result.index("已确认事实：") < result.index("当前倾向")
 
 
 @pytest.mark.asyncio
@@ -661,6 +663,44 @@ async def test_workflow_result_mode_does_not_rewrite_structured_artifact_body(
     result = await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
 
     assert result == body.strip()
+
+
+@pytest.mark.asyncio
+async def test_evidence_first_markdown_troubleshooting_summary_is_still_shaped(
+    tmp_path: Path,
+) -> None:
+    loop = _make_loop(tmp_path)
+    body = "# 排查结论\n\n已确认事实：日志里持续报错。\n根因已确认，就是日志轮转失败。"
+    loop.provider.chat = AsyncMock(return_value=LLMResponse(content=body, tool_calls=[]))
+    session = loop.sessions.get_or_create("cli:workflow")
+    session.metadata["workflow_result_mode"] = "evidence_first"
+    session.metadata["workflow_result_mode_reason"] = "先别急着下结论"
+    loop.sessions.save(session)
+
+    result = await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
+
+    assert "# 排查结论" in result
+    assert "当前倾向" in result
+    assert "根因已确认" not in result
+
+
+@pytest.mark.asyncio
+async def test_evidence_first_preserves_original_suffix_after_strong_conclusion(
+    tmp_path: Path,
+) -> None:
+    loop = _make_loop(tmp_path)
+    content = "已确认事实：日志里连续报错。根因已确认，就是日志轮转失败。下一步：先核对 node-a 的轮转配置。"
+    loop.provider.chat = AsyncMock(return_value=LLMResponse(content=content, tool_calls=[]))
+    session = loop.sessions.get_or_create("cli:workflow")
+    session.metadata["workflow_result_mode"] = "evidence_first"
+    session.metadata["workflow_result_mode_reason"] = "先别急着下结论"
+    loop.sessions.save(session)
+
+    result = await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
+
+    assert "下一步：先核对 node-a 的轮转配置。" in result
+    assert "当前倾向" in result
+    assert "根因已确认" not in result
 
 
 @pytest.mark.asyncio
