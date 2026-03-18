@@ -29,6 +29,155 @@ def _make_loop(
 
 
 @pytest.mark.asyncio
+async def test_pending_target_expansion_gate_takes_precedence_over_resume_control(tmp_path: Path) -> None:
+    targeting = TargetingConfig.model_validate(
+        {
+            "targets": [
+                {"id": "node-a", "target": "root@10.0.0.1", "labels": ["storage", "hci"]},
+                {"id": "node-b", "target": "root@10.0.0.2", "labels": ["storage", "hci"]},
+            ],
+            "groups": [{"name": "storage-cluster", "targets": ["node-a", "node-b"]}],
+        }
+    )
+    loop = _make_loop(tmp_path, targeting=targeting)
+    loop.provider.chat = AsyncMock(
+        side_effect=[
+            LLMResponse(
+                content="先对比 storage 集群。",
+                tool_calls=[ToolCallRequest(id="1", name="service_status", arguments={"service": "nginx"})],
+            ),
+            LLMResponse(content="已切换到多节点排查。", tool_calls=[]),
+        ]
+    )
+    loop.tools.execute = AsyncMock(return_value="active")
+
+    first = await loop.process_direct("storage 集群出问题了", session_key="cli:cluster")
+    second = await loop.process_direct("继续", session_key="cli:cluster")
+
+    assert "确认" in first
+    assert "多节点" in second
+    session = loop.sessions.get_or_create("cli:cluster")
+    assert session.metadata.get("expansion_confirmed") is False
+    assert session.metadata.get("pending_target_resolution") is None
+    assert session.metadata.get("workflow_paused") is False
+    assert session.metadata.get("workflow_last_control_input") == "继续"
+
+
+@pytest.mark.asyncio
+async def test_pending_target_expansion_continue_clears_paused_workflow_state(tmp_path: Path) -> None:
+    targeting = TargetingConfig.model_validate(
+        {
+            "targets": [
+                {"id": "node-a", "target": "root@10.0.0.1", "labels": ["storage", "hci"]},
+                {"id": "node-b", "target": "root@10.0.0.2", "labels": ["storage", "hci"]},
+            ],
+            "groups": [{"name": "storage-cluster", "targets": ["node-a", "node-b"]}],
+        }
+    )
+    loop = _make_loop(tmp_path, targeting=targeting)
+    loop.provider.chat = AsyncMock(
+        side_effect=[
+            LLMResponse(
+                content="先对比 storage 集群。",
+                tool_calls=[ToolCallRequest(id="1", name="service_status", arguments={"service": "nginx"})],
+            ),
+            LLMResponse(content="已切换到多节点排查。", tool_calls=[]),
+        ]
+    )
+    loop.tools.execute = AsyncMock(return_value="active")
+
+    await loop.process_direct("暂停", session_key="cli:cluster")
+    first = await loop.process_direct("storage 集群出问题了", session_key="cli:cluster")
+    second = await loop.process_direct("继续", session_key="cli:cluster")
+
+    assert "确认" in first
+    assert "多节点" in second
+    session = loop.sessions.get_or_create("cli:cluster")
+    assert session.metadata.get("workflow_paused") is False
+    assert session.metadata.get("workflow_last_control_input") == "继续"
+
+
+@pytest.mark.asyncio
+async def test_process_direct_pause_stores_workflow_paused_state(tmp_path: Path) -> None:
+    loop = _make_loop(tmp_path)
+    loop.provider.chat = AsyncMock(side_effect=AssertionError("provider should not be called"))
+
+    result = await loop.process_direct("暂停", session_key="cli:workflow")
+
+    assert "暂停" in result
+    session = loop.sessions.get_or_create("cli:workflow")
+    assert session.metadata.get("workflow_paused") is True
+    assert session.metadata.get("workflow_last_control_input") == "暂停"
+
+
+@pytest.mark.asyncio
+async def test_process_direct_resume_clears_workflow_paused_state(tmp_path: Path) -> None:
+    loop = _make_loop(tmp_path)
+    loop.provider.chat = AsyncMock(side_effect=AssertionError("provider should not be called"))
+
+    await loop.process_direct("暂停", session_key="cli:workflow")
+    result = await loop.process_direct("继续", session_key="cli:workflow")
+
+    assert "继续" in result
+    session = loop.sessions.get_or_create("cli:workflow")
+    assert session.metadata.get("workflow_paused") is False
+    assert session.metadata.get("workflow_last_control_input") == "继续"
+
+
+@pytest.mark.asyncio
+async def test_process_direct_change_focus_stores_bounded_focus_hint(tmp_path: Path) -> None:
+    loop = _make_loop(tmp_path)
+    loop.provider.chat = AsyncMock(side_effect=AssertionError("provider should not be called"))
+
+    result = await loop.process_direct("先只看日志", session_key="cli:workflow")
+
+    assert "日志" in result
+    session = loop.sessions.get_or_create("cli:workflow")
+    assert session.metadata.get("workflow_focus_hint") == "logs_only"
+    assert session.metadata.get("workflow_last_control_input") == "先只看日志"
+
+
+@pytest.mark.asyncio
+async def test_process_direct_narrow_scope_blocks_later_multi_target_expansion(tmp_path: Path) -> None:
+    targeting = TargetingConfig.model_validate(
+        {
+            "targets": [
+                {"id": "node-a", "target": "root@10.0.0.1", "labels": ["storage", "hci"]},
+                {"id": "node-b", "target": "root@10.0.0.2", "labels": ["storage", "hci"]},
+            ],
+            "groups": [{"name": "storage-cluster", "targets": ["node-a", "node-b"]}],
+        }
+    )
+    loop = _make_loop(tmp_path, targeting=targeting)
+    loop.provider.chat = AsyncMock(return_value=LLMResponse(content="done", tool_calls=[]))
+
+    result = await loop.process_direct("不要多节点", session_key="cli:cluster")
+    followup = await loop.process_direct("storage 集群出问题了", session_key="cli:cluster")
+
+    assert "单节点" in result
+    assert "确认" not in followup
+
+    session = loop.sessions.get_or_create("cli:cluster")
+    assert session.metadata.get("workflow_scope_constraints") == {"forbid_multi_target": True}
+    assert session.metadata.get("pending_target_resolution") is None
+
+
+@pytest.mark.asyncio
+async def test_process_direct_non_control_chat_does_not_set_workflow_control_state(tmp_path: Path) -> None:
+    loop = _make_loop(tmp_path)
+    loop.provider.chat = AsyncMock(return_value=LLMResponse(content="done", tool_calls=[]))
+
+    result = await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
+
+    assert result
+    session = loop.sessions.get_or_create("cli:workflow")
+    assert "workflow_paused" not in session.metadata
+    assert "workflow_focus_hint" not in session.metadata
+    assert "workflow_scope_constraints" not in session.metadata
+    assert "workflow_last_control_input" not in session.metadata
+
+
+@pytest.mark.asyncio
 async def test_agent_loop_marks_repeated_log_sampling_as_stale(tmp_path: Path) -> None:
     loop = _make_loop(tmp_path, max_rounds=8)
     loop.provider.chat = AsyncMock(

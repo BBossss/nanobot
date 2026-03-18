@@ -700,6 +700,11 @@ class AgentLoop:
             self._record_gate_turn(session, user_content=msg.content, assistant_content=gate_reply)
             self.sessions.save(session)
             return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content=gate_reply)
+        control_reply = self._handle_workflow_control(session, msg.content)
+        if control_reply is not None:
+            self._record_gate_turn(session, user_content=msg.content, assistant_content=control_reply)
+            self.sessions.save(session)
+            return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content=control_reply)
         confirmed_scope_active = session.metadata.get("expansion_confirmed") is True
 
         unconsolidated = len(session.messages) - session.last_consolidated
@@ -1138,6 +1143,53 @@ class AgentLoop:
     def _normalized_reply_token(content: str) -> str:
         return re.sub(r"\s+", "", content.strip().lower())
 
+    @staticmethod
+    def _parse_troubleshooting_control_intent(content: str) -> str | None:
+        """Map a bounded troubleshooting control phrase to an internal intent."""
+        token = AgentLoop._normalized_reply_token(content)
+        if token == "暂停":
+            return "pause"
+        if token == "继续":
+            return "resume"
+        if token in {"只查日志", "先只看日志"}:
+            return "change_focus"
+        if token in {"不要多节点", "先别扩到多节点"}:
+            return "narrow_scope"
+        return None
+
+    def _handle_workflow_control(self, session: Session, content: str) -> str | None:
+        """Persist bounded workflow control state and return a short acknowledgement."""
+        if session.metadata.pop("workflow_skip_control_once", False):
+            return None
+
+        intent = self._parse_troubleshooting_control_intent(content)
+        if intent is None:
+            return None
+
+        session.metadata["workflow_last_control_input"] = content.strip()
+
+        if intent == "pause":
+            session.metadata["workflow_paused"] = True
+            return "已暂停当前排查；如需继续，请回复“继续”。"
+        if intent == "resume":
+            session.metadata["workflow_paused"] = False
+            return "已继续当前排查。"
+        if intent == "change_focus":
+            session.metadata["workflow_focus_hint"] = "logs_only"
+            return "后续先按日志方向继续调查。"
+        if intent == "narrow_scope":
+            session.metadata["workflow_scope_constraints"] = {"forbid_multi_target": True}
+            session.metadata["pending_target_resolution"] = None
+            self._clear_confirmed_target_scope(session, skip_reprompt_once=False)
+            return "后续保持单节点模式，不扩到多节点。"
+        return None
+
+    @staticmethod
+    def _workflow_forbids_multi_target(session: Session) -> bool:
+        """Return whether workflow scope constraints currently forbid multi-target expansion."""
+        constraints = session.metadata.get("workflow_scope_constraints")
+        return isinstance(constraints, dict) and constraints.get("forbid_multi_target") is True
+
     def _handle_target_expansion_gate(self, session: Session, content: str) -> str | None:
         """Handle confirmation-gated cluster expansion before normal agent execution."""
         if session.metadata.pop("expansion_skip_reprompt_once", False):
@@ -1146,17 +1198,26 @@ class AgentLoop:
         pending = session.metadata.get("pending_target_resolution")
         token = self._normalized_reply_token(content)
         if pending:
+            # A pending multi-target confirmation gate takes precedence over
+            # workflow-control parsing for exact replies such as "继续".
             if token in {"确认", "继续", "可以查", "yes", "y"}:
                 session.metadata["resolved_target_ids"] = list(pending.get("resolved_target_ids", []))
                 session.metadata["resolved_targets"] = list(pending.get("resolved_targets", []))
                 session.metadata["resolution_reason"] = str(pending.get("reason", ""))
                 session.metadata["expansion_confirmed"] = True
                 session.metadata["pending_target_resolution"] = None
+                if token == "继续":
+                    session.metadata["workflow_paused"] = False
+                    session.metadata["workflow_last_control_input"] = "继续"
+                session.metadata["workflow_skip_control_once"] = True
                 return None
             if token in {"不用", "先单节点", "no", "n"}:
                 session.metadata["pending_target_resolution"] = None
                 self._clear_confirmed_target_scope(session, skip_reprompt_once=False)
                 return "保持单节点排障模式。如需多节点排查，我会先列出候选节点再请你确认。"
+
+        if self._workflow_forbids_multi_target(session):
+            return None
 
         resolution = self._resolve_target_intent(content)
         if not resolution:
