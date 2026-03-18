@@ -211,6 +211,92 @@ async def test_process_direct_non_control_chat_does_not_set_workflow_control_sta
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("content", "expected_reason"),
+    [
+        ("先别急着下结论", "先别急着下结论"),
+        ("先给证据再说判断", "先给证据再说判断"),
+        ("先别定性", "先别定性"),
+        ("先证据后判断", "先证据后判断"),
+    ],
+)
+async def test_process_direct_enables_evidence_first_result_mode(
+    tmp_path: Path,
+    content: str,
+    expected_reason: str,
+) -> None:
+    loop = _make_loop(tmp_path)
+    loop.provider.chat = AsyncMock(side_effect=AssertionError("provider should not be called"))
+
+    result = await loop.process_direct(content, session_key="cli:workflow")
+
+    assert result
+    session = loop.sessions.get_or_create("cli:workflow")
+    assert session.metadata.get("workflow_result_mode") == "evidence_first"
+    assert session.metadata.get("workflow_result_mode_reason") == expected_reason
+    assert session.metadata.get("workflow_last_control_input") == content
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("content", "expected_reply"),
+    [
+        ("直接说结论", "已解除证据优先收口；后续可直接给出判断。"),
+        ("你可以下判断了", "已解除证据优先收口；后续可直接给出判断。"),
+        ("直接给判断", "已解除证据优先收口；后续可直接给出判断。"),
+    ],
+)
+async def test_process_direct_disables_evidence_first_result_mode(
+    tmp_path: Path,
+    content: str,
+    expected_reply: str,
+) -> None:
+    loop = _make_loop(tmp_path)
+    loop.provider.chat = AsyncMock(side_effect=AssertionError("provider should not be called"))
+
+    await loop.process_direct("先别急着下结论", session_key="cli:workflow")
+    result = await loop.process_direct(content, session_key="cli:workflow")
+
+    assert result == expected_reply
+    session = loop.sessions.get_or_create("cli:workflow")
+    assert session.metadata.get("workflow_result_mode") is None
+    assert session.metadata.get("workflow_result_mode_reason") is None
+    assert session.metadata.get("workflow_last_control_input") == content
+
+
+@pytest.mark.asyncio
+async def test_process_direct_normal_troubleshooting_prompt_leaves_result_mode_unset(tmp_path: Path) -> None:
+    loop = _make_loop(tmp_path)
+    loop.provider.chat = AsyncMock(return_value=LLMResponse(content="done", tool_calls=[]))
+
+    await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
+
+    session = loop.sessions.get_or_create("cli:workflow")
+    assert "workflow_result_mode" not in session.metadata
+    assert "workflow_result_mode_reason" not in session.metadata
+    assert "workflow_last_control_input" not in session.metadata
+
+
+@pytest.mark.asyncio
+async def test_evidence_first_result_mode_persists_across_followup_turns(tmp_path: Path) -> None:
+    loop = _make_loop(tmp_path)
+    loop.provider.chat = AsyncMock(
+        side_effect=[
+            LLMResponse(content="已记录。", tool_calls=[]),
+            LLMResponse(content="继续排查。", tool_calls=[]),
+        ]
+    )
+
+    await loop.process_direct("先别急着下结论", session_key="cli:workflow")
+    await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
+
+    session = loop.sessions.get_or_create("cli:workflow")
+    assert session.metadata.get("workflow_result_mode") == "evidence_first"
+    assert session.metadata.get("workflow_result_mode_reason") == "先别急着下结论"
+    assert session.metadata.get("workflow_last_control_input") == "先别急着下结论"
+
+
+@pytest.mark.asyncio
 async def test_agent_loop_marks_repeated_log_sampling_as_stale(tmp_path: Path) -> None:
     loop = _make_loop(tmp_path, max_rounds=8)
     loop.provider.chat = AsyncMock(

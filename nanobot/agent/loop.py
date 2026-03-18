@@ -1169,6 +1169,10 @@ class AgentLoop:
             return "change_focus"
         if token in {"不要多节点", "先别扩到多节点"}:
             return "narrow_scope"
+        if token in {"先别急着下结论", "先给证据再说判断", "先别定性", "先证据后判断"}:
+            return "evidence_first_enable"
+        if token in {"直接说结论", "你可以下判断了", "直接给判断"}:
+            return "evidence_first_disable"
         return None
 
     def _handle_workflow_control(self, session: Session, content: str) -> str | None:
@@ -1196,6 +1200,14 @@ class AgentLoop:
             session.metadata["pending_target_resolution"] = None
             self._clear_confirmed_target_scope(session, skip_reprompt_once=False)
             return "后续保持单节点模式，不扩到多节点。"
+        if intent == "evidence_first_enable":
+            session.metadata["workflow_result_mode"] = "evidence_first"
+            session.metadata["workflow_result_mode_reason"] = content.strip()
+            return "已切到证据优先收口；后续我会先列证据和未确认点。"
+        if intent == "evidence_first_disable":
+            session.metadata.pop("workflow_result_mode", None)
+            session.metadata.pop("workflow_result_mode_reason", None)
+            return "已解除证据优先收口；后续可直接给出判断。"
         return None
 
     @staticmethod
