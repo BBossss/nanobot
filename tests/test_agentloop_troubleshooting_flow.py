@@ -737,6 +737,8 @@ async def test_evidence_first_rewrites_multiple_strong_conclusion_phrases(
     assert "根因已确认" not in result
     assert "可以确定就是" not in result
     assert "当前倾向" in result
+    assert result.count("当前倾向") == 1
+    assert result.count("现有证据更偏向") == 1
 
 
 @pytest.mark.asyncio

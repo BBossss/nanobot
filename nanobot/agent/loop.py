@@ -1572,7 +1572,7 @@ class AgentLoop:
 
     @staticmethod
     def _rewrite_remaining_strong_conclusions(content: str) -> str:
-        """Downgrade any remaining strong-conclusion phrases inside preserved body text."""
+        """Remove any remaining strong-conclusion phrases inside preserved body text."""
         patterns: tuple[tuple[re.Pattern[str], str], ...] = (
             (re.compile(r"根因已确认[，,]*(?:就是|是)(?P<target>[^。！？\n，,;；]+)"), "现有证据更偏向{target}"),
             (re.compile(r"问题已经定位到(?P<target>[^。！？\n，,;；]+)"), "问题更集中在{target}"),
@@ -1580,13 +1580,9 @@ class AgentLoop:
         )
 
         rewritten = content
-        for pattern, template in patterns:
-            rewritten = pattern.sub(
-                lambda match: template.format(
-                    target=str(match.groupdict().get("target", "")).strip("，,。；; \n")
-                ),
-                rewritten,
-            )
+        for pattern, _template in patterns:
+            rewritten = pattern.sub("", rewritten)
+        rewritten = re.sub(r"(^|[\n])[\s，,。；;]+", r"\1", rewritten)
         return rewritten
 
     @staticmethod
