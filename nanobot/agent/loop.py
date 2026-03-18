@@ -89,6 +89,26 @@ class AgentLoop:
     _TOOL_RESULT_MAX_CHARS = 500
     _PROGRESS_HEARTBEAT_INITIAL_S = 3.0
     _PROGRESS_HEARTBEAT_INTERVAL_S = 5.0
+    _CONTROL_BOUNDARY_CHARS = {"，", ",", "。", "；", ";", "：", ":", "、", "！", "!", "？", "?"}
+    _TROUBLESHOOTING_CONTROL_PHRASES: tuple[tuple[str, str], ...] = (
+        ("暂停", "pause"),
+        ("继续", "resume"),
+        ("只查日志", "change_focus"),
+        ("先只看日志", "change_focus"),
+        ("不要多节点", "narrow_scope"),
+        ("先别扩到多节点", "narrow_scope"),
+    )
+    _RESULT_MODE_ENABLE_PHRASES: tuple[str, ...] = (
+        "先别急着下结论",
+        "先给证据再说判断",
+        "先别定性",
+        "先证据后判断",
+    )
+    _RESULT_MODE_DISABLE_PHRASES: tuple[str, ...] = (
+        "直接说结论",
+        "你可以下判断了",
+        "直接给判断",
+    )
 
     def __init__(
         self,
@@ -1167,7 +1187,20 @@ class AgentLoop:
             return False
         if len(token) == len(phrase):
             return True
-        return token[len(phrase)] in {"，", ",", "。", "；", ";", "：", ":", "、", "！", "!", "？", "?"}
+        return token[len(phrase)] in AgentLoop._CONTROL_BOUNDARY_CHARS
+
+    @staticmethod
+    def _contains_bounded_phrase_anywhere(token: str, phrase: str) -> bool:
+        """Return whether a control phrase appears as a punctuation-bounded segment."""
+        start = token.find(phrase)
+        while start != -1:
+            before_ok = start == 0 or token[start - 1] in AgentLoop._CONTROL_BOUNDARY_CHARS
+            end = start + len(phrase)
+            after_ok = end == len(token) or token[end] in AgentLoop._CONTROL_BOUNDARY_CHARS
+            if before_ok and after_ok:
+                return True
+            start = token.find(phrase, start + 1)
+        return False
 
     @staticmethod
     def _looks_like_troubleshooting_content(content: str) -> bool:
@@ -1182,18 +1215,15 @@ class AgentLoop:
             "卡住",
             "超时",
             "延迟",
-            "失败",
             "日志",
-            "服务",
+            "服务状态",
             "进程",
             "节点",
             "集群",
             "磁盘",
             "网络",
-            "连接",
             "排查",
             "调查",
-            "恢复",
             "诊断",
             "告警",
         )
@@ -1203,15 +1233,8 @@ class AgentLoop:
     def _parse_troubleshooting_control_intent(content: str) -> str | None:
         """Map a bounded troubleshooting control phrase to an internal intent."""
         token = AgentLoop._normalized_reply_token(content)
-        for phrase, intent in (
-            ("暂停", "pause"),
-            ("继续", "resume"),
-            ("只查日志", "change_focus"),
-            ("先只看日志", "change_focus"),
-            ("不要多节点", "narrow_scope"),
-            ("先别扩到多节点", "narrow_scope"),
-        ):
-            if AgentLoop._contains_bounded_phrase(token, phrase):
+        for phrase, intent in AgentLoop._TROUBLESHOOTING_CONTROL_PHRASES:
+            if AgentLoop._contains_bounded_phrase_anywhere(token, phrase):
                 return intent
         return None
 
@@ -1219,18 +1242,9 @@ class AgentLoop:
     def _parse_result_mode_control_intent(content: str) -> str | None:
         """Map a bounded evidence-first phrase to an internal intent."""
         token = AgentLoop._normalized_reply_token(content)
-        if any(AgentLoop._contains_bounded_phrase(token, phrase) for phrase in (
-            "先别急着下结论",
-            "先给证据再说判断",
-            "先别定性",
-            "先证据后判断",
-        )):
+        if any(AgentLoop._contains_bounded_phrase(token, phrase) for phrase in AgentLoop._RESULT_MODE_ENABLE_PHRASES):
             return "evidence_first_enable"
-        if any(AgentLoop._contains_bounded_phrase(token, phrase) for phrase in (
-            "直接说结论",
-            "你可以下判断了",
-            "直接给判断",
-        )):
+        if any(AgentLoop._contains_bounded_phrase(token, phrase) for phrase in AgentLoop._RESULT_MODE_DISABLE_PHRASES):
             return "evidence_first_disable"
         return None
 
@@ -1243,13 +1257,8 @@ class AgentLoop:
         """Return whether the current turn is only a result-mode control phrase."""
         token = self._normalized_reply_token(content)
         return self._strip_trailing_control_punctuation(token) in {
-            "先别急着下结论",
-            "先给证据再说判断",
-            "先别定性",
-            "先证据后判断",
-            "直接说结论",
-            "你可以下判断了",
-            "直接给判断",
+            *self._RESULT_MODE_ENABLE_PHRASES,
+            *self._RESULT_MODE_DISABLE_PHRASES,
         }
 
     def _should_consider_result_mode_control(self, session: Session, content: str) -> bool:
