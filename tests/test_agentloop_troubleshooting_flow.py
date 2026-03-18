@@ -567,7 +567,7 @@ async def test_evidence_first_result_shaping_downgrades_conclusion_only_reply(
 
     result = await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
 
-    assert "当前倾向" not in result
+    assert "当前倾向" in result
     assert "根因已确认" not in result
     assert "证据缺口" in result
     assert "不确定点" in result
@@ -666,6 +666,23 @@ async def test_workflow_result_mode_does_not_rewrite_structured_artifact_body(
 
 
 @pytest.mark.asyncio
+async def test_workflow_result_mode_does_not_rewrite_plain_markdown_report_body(
+    tmp_path: Path,
+) -> None:
+    loop = _make_loop(tmp_path)
+    body = "# Inspection report\n\n## Evidence\n- node-a logrotate failed\n\n## Conclusion\nPlease review report details.\n"
+    loop.provider.chat = AsyncMock(return_value=LLMResponse(content=body, tool_calls=[]))
+    session = loop.sessions.get_or_create("cli:workflow")
+    session.metadata["workflow_result_mode"] = "evidence_first"
+    session.metadata["workflow_result_mode_reason"] = "先别急着下结论"
+    loop.sessions.save(session)
+
+    result = await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
+
+    assert result == body.strip()
+
+
+@pytest.mark.asyncio
 async def test_evidence_first_markdown_troubleshooting_summary_is_still_shaped(
     tmp_path: Path,
 ) -> None:
@@ -701,6 +718,25 @@ async def test_evidence_first_preserves_original_suffix_after_strong_conclusion(
     assert "下一步：先核对 node-a 的轮转配置。" in result
     assert "当前倾向" in result
     assert "根因已确认" not in result
+
+
+@pytest.mark.asyncio
+async def test_evidence_first_rewrites_multiple_strong_conclusion_phrases(
+    tmp_path: Path,
+) -> None:
+    loop = _make_loop(tmp_path)
+    content = "已确认事实：日志里持续报错。根因已确认，就是日志轮转失败。可以确定就是 node-a 的配置问题。"
+    loop.provider.chat = AsyncMock(return_value=LLMResponse(content=content, tool_calls=[]))
+    session = loop.sessions.get_or_create("cli:workflow")
+    session.metadata["workflow_result_mode"] = "evidence_first"
+    session.metadata["workflow_result_mode_reason"] = "先别急着下结论"
+    loop.sessions.save(session)
+
+    result = await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
+
+    assert "根因已确认" not in result
+    assert "可以确定就是" not in result
+    assert "当前倾向" in result
 
 
 @pytest.mark.asyncio

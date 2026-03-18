@@ -1519,6 +1519,8 @@ class AgentLoop:
             return False
         if text.startswith("---\n") and "\n---" in text:
             return True
+        if re.search(r"(?im)^#{1,6}\s+(inspection|report|case)\b", text):
+            return True
         if re.search(r"(?m)^\s*-\s+\[[^\]]+\]\s+\S", text):
             return True
         if re.search(r"(?m)^\s*[A-Za-z][\w \-]{1,40}:\s+\S+", text) and "\n" in text:
@@ -1567,6 +1569,25 @@ class AgentLoop:
             if any(marker in token for marker in ("日志", "报错", "错误", "异常", "超时", "失败", "卡住", "告警", "堆栈", "服务状态", "进程状态", "磁盘状态", "网络状态", "对比", "检查", "看到", "发现", "显示")):
                 signals += 1
         return signals
+
+    @staticmethod
+    def _rewrite_remaining_strong_conclusions(content: str) -> str:
+        """Downgrade any remaining strong-conclusion phrases inside preserved body text."""
+        patterns: tuple[tuple[re.Pattern[str], str], ...] = (
+            (re.compile(r"根因已确认[，,]*(?:就是|是)(?P<target>[^。！？\n，,;；]+)"), "现有证据更偏向{target}"),
+            (re.compile(r"问题已经定位到(?P<target>[^。！？\n，,;；]+)"), "问题更集中在{target}"),
+            (re.compile(r"可以确定(?:就是|是)(?P<target>[^。！？\n，,;；]+)"), "现有证据更偏向{target}"),
+        )
+
+        rewritten = content
+        for pattern, template in patterns:
+            rewritten = pattern.sub(
+                lambda match: template.format(
+                    target=str(match.groupdict().get("target", "")).strip("，,。；; \n")
+                ),
+                rewritten,
+            )
+        return rewritten
 
     @staticmethod
     def _summarize_tool_evidence(messages: list[dict[str, Any]] | None) -> str | None:
@@ -1629,7 +1650,7 @@ class AgentLoop:
         if not sections and tendency_text:
             if tool_summary := self._summarize_tool_evidence(messages):
                 sections.append(tool_summary)
-        body = "\n".join(sections).strip()
+        body = self._rewrite_remaining_strong_conclusions("\n".join(sections).strip())
         evidence_signals = self._count_evidence_signals(body)
         has_explicit_evidence_labels = any(marker in body for marker in ("已确认事实", "关键证据"))
 
@@ -1641,7 +1662,7 @@ class AgentLoop:
                 if tool_summary:
                     body = f"{tool_summary}\n当前倾向：{tendency_text}"
                 else:
-                    body = "证据缺口：当前回复未展开可核对证据。"
+                    body = f"证据缺口：当前回复未展开可核对证据。\n当前倾向：{tendency_text}"
         if not body:
             body = final_content.strip()
         return self._ensure_minimal_uncertainty_and_next_step(body)
