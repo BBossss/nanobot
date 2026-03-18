@@ -163,6 +163,39 @@ async def test_process_direct_narrow_scope_blocks_later_multi_target_expansion(t
 
 
 @pytest.mark.asyncio
+async def test_narrow_scope_clears_confirmed_multi_target_scope_for_later_turns(tmp_path: Path) -> None:
+    targeting = TargetingConfig.model_validate(
+        {
+            "targets": [
+                {"id": "node-a", "target": "root@10.0.0.1", "labels": ["storage", "hci"]},
+                {"id": "node-b", "target": "root@10.0.0.2", "labels": ["storage", "hci"]},
+            ],
+            "groups": [{"name": "storage-cluster", "targets": ["node-a", "node-b"]}],
+        }
+    )
+    loop = _make_loop(tmp_path, targeting=targeting)
+    loop.provider.chat = AsyncMock(
+        side_effect=[
+            LLMResponse(content="已切回单节点调查。", tool_calls=[]),
+            LLMResponse(content="继续按单节点调查。", tool_calls=[]),
+        ]
+    )
+
+    await loop.process_direct("storage 集群出问题了", session_key="cli:cluster")
+    await loop.process_direct("确认", session_key="cli:cluster")
+    result = await loop.process_direct("不要多节点", session_key="cli:cluster")
+    followup = await loop.process_direct("继续看 storage 状态", session_key="cli:cluster")
+
+    assert "单节点" in result
+    assert "确认" not in followup
+
+    session = loop.sessions.get_or_create("cli:cluster")
+    assert session.metadata.get("workflow_scope_constraints") == {"forbid_multi_target": True}
+    assert session.metadata.get("expansion_confirmed") is False
+    assert session.metadata.get("resolved_target_ids") is None
+
+
+@pytest.mark.asyncio
 async def test_process_direct_non_control_chat_does_not_set_workflow_control_state(tmp_path: Path) -> None:
     loop = _make_loop(tmp_path)
     loop.provider.chat = AsyncMock(return_value=LLMResponse(content="done", tool_calls=[]))

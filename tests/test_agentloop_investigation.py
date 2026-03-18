@@ -242,3 +242,116 @@ async def test_await_tool_with_heartbeat_does_not_leak_shielded_future_exception
 
     assert any("仍在读取日志" in item for item in progress)
     assert exception_contexts == []
+
+
+@pytest.mark.asyncio
+async def test_paused_session_short_circuits_without_new_investigation_tool_calls(tmp_path: Path) -> None:
+    loop = _make_loop(tmp_path, max_rounds=4)
+    loop.provider.chat = AsyncMock(side_effect=AssertionError("provider should not be called while paused"))
+    loop.tools.execute = AsyncMock(side_effect=AssertionError("tools should not be called while paused"))
+
+    await loop.process_direct("暂停", session_key="cli:paused")
+    result = await loop.process_direct("继续查一下", session_key="cli:paused")
+
+    assert "暂停" in result
+    assert loop.provider.chat.await_count == 0
+    assert loop.tools.execute.await_count == 0
+
+
+@pytest.mark.asyncio
+async def test_resume_allows_investigation_to_continue_from_existing_session_context(tmp_path: Path) -> None:
+    loop = _make_loop(tmp_path, max_rounds=4)
+    provider_calls: list[list[dict]] = []
+
+    async def _chat(*, messages, **_kwargs):
+        provider_calls.append(messages)
+        if len(provider_calls) == 1:
+            return LLMResponse(
+                content="先看日志。",
+                tool_calls=[ToolCallRequest(id="1", name="read_log_tail", arguments={"path": "/var/log/app.log"})],
+            )
+        if len(provider_calls) == 2:
+            return LLMResponse(content="初步看完了日志。", tool_calls=[])
+        if len(provider_calls) == 3:
+            tool_messages = [m for m in messages if m.get("role") == "tool"]
+            assistant_messages = [m for m in messages if m.get("role") == "assistant"]
+            assert any("line1\nline2" in str(m.get("content")) for m in tool_messages)
+            assert any("初步看完了日志。" in str(m.get("content")) for m in assistant_messages)
+            return LLMResponse(content="继续调查。", tool_calls=[])
+        raise AssertionError("unexpected provider call")
+
+    loop.provider.chat = AsyncMock(side_effect=_chat)
+    loop.tools.execute = AsyncMock(return_value="line1\nline2")
+
+    first = await loop.process_direct("应用报错了", session_key="cli:resume")
+    paused = await loop.process_direct("暂停", session_key="cli:resume")
+    resumed = await loop.process_direct("继续", session_key="cli:resume")
+    second = await loop.process_direct("还有别的线索吗", session_key="cli:resume")
+
+    assert "继续调查" in second
+    assert "暂停" in paused
+    assert "继续" in resumed
+    assert loop.tools.execute.await_count == 1
+    assert first
+
+
+@pytest.mark.asyncio
+async def test_不要多节点_blocks_confirmed_multi_target_reuse_in_later_investigation(tmp_path: Path) -> None:
+    loop = _make_loop(tmp_path, max_rounds=4)
+    loop.provider.chat = AsyncMock(
+        side_effect=[
+            LLMResponse(
+                content="继续查服务状态。",
+                tool_calls=[ToolCallRequest(id="1", name="service_status", arguments={"service": "nginx"})],
+            ),
+            LLMResponse(content="调查完成。", tool_calls=[]),
+        ]
+    )
+    loop.tools.execute = AsyncMock(return_value="active")
+    session = loop.sessions.get_or_create("cli:scope")
+    session.metadata["expansion_confirmed"] = True
+    session.metadata["resolved_target_ids"] = ["node-a", "node-b"]
+    session.metadata["resolved_targets"] = [
+        {"id": "node-a", "target": "root@10.0.0.1", "labels": ["storage"]},
+        {"id": "node-b", "target": "root@10.0.0.2", "labels": ["storage"]},
+    ]
+    session.metadata["resolution_reason"] = "storage 集群都需要看"
+    loop.sessions.save(session)
+
+    await loop.process_direct("不要多节点", session_key="cli:scope")
+    result = await loop.process_direct("继续查一下", session_key="cli:scope")
+
+    assert "调查完成" in result
+    loop.tools.execute.assert_awaited_once_with("service_status", {"service": "nginx"})
+
+
+@pytest.mark.asyncio
+async def test_只查日志_injects_bounded_focus_hint_for_later_investigation_planning(tmp_path: Path) -> None:
+    loop = _make_loop(tmp_path, max_rounds=4)
+    provider_calls: list[list[dict]] = []
+
+    async def _chat(*, messages, **_kwargs):
+        provider_calls.append(messages)
+        if len(provider_calls) == 1:
+            return LLMResponse(
+                content="先按日志方向检查。",
+                tool_calls=[ToolCallRequest(id="1", name="read_log_tail", arguments={"path": "/var/log/app.log"})],
+            )
+        if len(provider_calls) == 2:
+            return LLMResponse(content="日志里先看到异常。", tool_calls=[])
+        raise AssertionError("unexpected provider call")
+
+    loop.provider.chat = AsyncMock(side_effect=_chat)
+    loop.tools.execute = AsyncMock(return_value="timeout error")
+
+    await loop.process_direct("只查日志", session_key="cli:focus")
+    result = await loop.process_direct("帮我继续排查", session_key="cli:focus")
+
+    assert "日志里先看到异常" in result
+    prompt_texts = [
+        str(message.get("content"))
+        for message in provider_calls[0]
+        if message.get("role") == "user"
+    ]
+    assert any("logs_only" in text or "只查日志" in text or "优先日志" in text for text in prompt_texts)
+    assert all("必须只执行日志工具" not in text for text in prompt_texts)

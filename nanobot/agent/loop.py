@@ -404,6 +404,16 @@ class AgentLoop:
             "a narrower target/time window or the next best readonly direction."
         )
 
+    @staticmethod
+    def _workflow_allows_confirmed_multi_target(session: Session | None) -> bool:
+        """Return whether a confirmed multi-target scope may be reused for this turn."""
+        if session is None:
+            return False
+        return (
+            session.metadata.get("expansion_confirmed") is True
+            and not AgentLoop._workflow_forbids_multi_target(session)
+        )
+
     async def _run_agent_loop(
         self,
         initial_messages: list[dict],
@@ -444,8 +454,7 @@ class AgentLoop:
                         await on_progress(clean)
                     stage_note = "执行只读检查"
                     if (
-                        session
-                        and session.metadata.get("expansion_confirmed") is True
+                        self._workflow_allows_confirmed_multi_target(session)
                         and supports_multi_target_tool(response.tool_calls[0].name)
                     ):
                         resolved_targets = session.metadata.get("resolved_targets") or []
@@ -705,7 +714,12 @@ class AgentLoop:
             self._record_gate_turn(session, user_content=msg.content, assistant_content=control_reply)
             self.sessions.save(session)
             return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content=control_reply)
-        confirmed_scope_active = session.metadata.get("expansion_confirmed") is True
+        if session.metadata.get("workflow_paused") is True:
+            pause_reply = "已暂停当前排查；如需继续，请回复“继续”。"
+            self._record_gate_turn(session, user_content=msg.content, assistant_content=pause_reply)
+            self.sessions.save(session)
+            return OutboundMessage(channel=msg.channel, chat_id=msg.chat_id, content=pause_reply)
+        confirmed_scope_active = self._workflow_allows_confirmed_multi_target(session)
 
         unconsolidated = len(session.messages) - session.last_consolidated
         if (unconsolidated >= self.memory_window and session.key not in self._consolidating):
@@ -753,6 +767,9 @@ class AgentLoop:
                 metadata=msg.metadata,
             ),
         )
+        workflow_runtime_context = self._build_workflow_runtime_context(session)
+        if workflow_runtime_context:
+            initial_messages.insert(-1, {"role": "user", "content": workflow_runtime_context})
 
         if progress_cb:
             await progress_cb("初始化上下文")
@@ -892,8 +909,7 @@ class AgentLoop:
     ) -> str:
         """Execute a tool call, expanding to multiple targets when confirmed."""
         if (
-            session
-            and session.metadata.get("expansion_confirmed") is True
+            self._workflow_allows_confirmed_multi_target(session)
             and supports_multi_target_tool(name)
             and not arguments.get("target")
         ):
@@ -966,8 +982,7 @@ class AgentLoop:
 
         async def _run() -> str:
             if (
-                session
-                and session.metadata.get("expansion_confirmed") is True
+                self._workflow_allows_confirmed_multi_target(session)
                 and supports_multi_target_tool(name)
                 and not arguments.get("target")
             ):
@@ -1020,8 +1035,7 @@ class AgentLoop:
         session: Session | None,
     ) -> int:
         if (
-            session
-            and session.metadata.get("expansion_confirmed") is True
+            self._workflow_allows_confirmed_multi_target(session)
             and supports_multi_target_tool(name)
             and not arguments.get("target")
         ):
@@ -1258,7 +1272,7 @@ class AgentLoop:
     @staticmethod
     def _build_confirmed_scope_progress(session: Session) -> str | None:
         """Build a progress note for a confirmed multi-target troubleshooting scope."""
-        if session.metadata.get("expansion_confirmed") is not True:
+        if not AgentLoop._workflow_allows_confirmed_multi_target(session):
             return None
         target_ids = session.metadata.get("resolved_target_ids") or []
         if not target_ids:
@@ -1286,3 +1300,26 @@ class AgentLoop:
         """Persist early-return confirmation-gate turns into session history."""
         session.add_message("user", user_content)
         session.add_message("assistant", assistant_content)
+
+    @staticmethod
+    def _build_workflow_runtime_context(session: Session) -> str | None:
+        """Build bounded workflow hints that shape investigation planning for this turn."""
+        lines: list[str] = []
+        focus_hint = session.metadata.get("workflow_focus_hint")
+        if focus_hint == "logs_only":
+            lines.append(
+                "- Focus hint: prioritize log-oriented readonly checks first when choosing the next step; "
+                "keep using judgment and switch direction if logs are insufficient."
+            )
+        if AgentLoop._workflow_forbids_multi_target(session):
+            lines.append(
+                "- Scope constraint: stay in single-target troubleshooting mode for this turn; "
+                "do not expand or reuse multi-target scope unless the user explicitly changes it."
+            )
+        if not lines:
+            return None
+        return (
+            ContextBuilder._RUNTIME_CONTEXT_TAG
+            + "\nWorkflow Controls:\n"
+            + "\n".join(lines)
+        )
