@@ -68,6 +68,12 @@ Ask:
 检查 /var/log/system.log 最近 200 行是否有 error，并给出结论
 ```
 
+## Troubleshooting Demo
+
+HCIGuard now makes the investigation process visible while it works: it emits stage progress, explains why it is checking a source, shows long-wait heartbeats, and adds a short process summary before the final conclusion.
+
+![HCIGuard troubleshooting strong feedback demo](assets/demo/troubleshooting-strong-feedback.gif)
+
 ## End-to-End Troubleshooting Example
 
 Incident flow (typical):
@@ -99,6 +105,7 @@ Incident flow (typical):
 
 - Read logs and inspect host state with controlled, read-only diagnostic tools
 - Use target-aware, read-only troubleshooting tools (`find_logs`, `read_log_tail`, `search_log`, `service_status`, `process_snapshot`, `journal_tail`, `disk_snapshot`, `network_snapshot`, `find_recent_files`)
+- Show visible troubleshooting progress with stage feedback, investigation reasons, long-wait heartbeats, and a short pre-conclusion summary
 - Record troubleshooting sessions as searchable cases
 - Run inspections, generate reports, and optionally convert findings into cases
 - Enforce readonly command execution with manual approvals and audit logging
@@ -117,7 +124,7 @@ Current interaction entry points:
 Current HCI-oriented capabilities:
 
 - Diagnostics: `diagnose_log_read`, `diagnose_log_search`, `diagnose_system_status`
-- Troubleshooting: investigation-first flow with read-only tools, fallback to `exec` when needed
+- Troubleshooting: investigation-first flow with read-only tools, strong progress feedback, confirmed multi-target scope expansion, fallback to `exec` when needed
 - Cases: record, import, search, show
 - Inspection: log scan, command/journal targets, report output, scheduled execution
 - Safety: readonly `exec`, `target`-aware SSH execution, approval file, unified command audit
@@ -169,7 +176,7 @@ Current recommended deployment modes:
 - HCI inspection node:
   deploy on a node with controlled readonly access to target logs and system commands
 
-Current implementation is strongest for single-host or single-node diagnostics. Cross-host orchestration is still a next-stage capability, not a finished V1 feature.
+Current implementation is strongest for single-host or single-node diagnostics. Confirmed multi-target troubleshooting is available for a bounded set of read-only checks, but broad cross-host orchestration is still an incremental next-stage capability rather than a fully general V1 feature.
 
 ## Roadmap
 

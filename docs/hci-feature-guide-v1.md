@@ -49,6 +49,10 @@
    `AGENTS.md`、`USER.md`、`IDENTITY.md` 默认引导到“只读优先、证据驱动、案例沉淀”。
 4. 仓库已完成渠道瘦身：
    当前仅保留 `CLI + Telegram + Mattermost`，已移除与当前 HCI 目标无关的其它 IM 渠道。
+5. 排障链路已补充“强反馈”：
+   调查前会解释原因，执行中会提示动作与 heartbeat，结论前会补简短过程摘要。
+6. README 已新增排障动图：
+   用一个短 GIF 直接展示终端里的排障反馈体验。
 
 ---
 
@@ -77,6 +81,18 @@ ExecTool readonlyMode 开启后：
 - 白名单命令直接执行
 - 非白名单命令被拒绝并提示人工放通
 - 放通命令保存在 approval 文件
+
+### 3.6 排障反馈链路
+
+`AgentLoop` 复用现有 `on_progress` / bus 通路，将排障过程中的反馈持续发往 CLI 或 IM：
+
+- 固定阶段反馈
+- 关键调查动作前的原因说明
+- 具体只读动作提示
+- 长耗时 heartbeat
+- 最终结论前的过程摘要
+
+这条链路不新增独立传输层，仍然沿用现有 progress callback。
 
 ---
 
@@ -224,7 +240,29 @@ CLI：
 - `/Users/ruibinhuang/repos/nanobot/nanobot/channels/mattermost.py`
 - `/Users/ruibinhuang/repos/nanobot/nanobot/channels/manager.py`
 
-## 4.6 安全控制（命令白名单 + 手工放通）
+## 4.6 排障过程反馈
+
+能力：
+
+- 排障阶段会持续显示进度，而不是只在最后一次性输出结论
+- 调查动作前会补一句“为什么查这一步”
+- 长耗时只读调查会输出 heartbeat
+- 多节点场景会显示简短进度
+- 最终判断前会输出一条简短过程摘要
+
+当前展示位置：
+
+- CLI 终端
+- Telegram / Mattermost 渠道中的 progress 消息
+- README 动图示例
+
+核心文件：
+
+- `/Users/ruibinhuang/repos/nanobot/nanobot/agent/loop.py`
+- `/Users/ruibinhuang/repos/nanobot/nanobot/agent/multi_target.py`
+- `/Users/ruibinhuang/repos/nanobot/assets/demo/troubleshooting-strong-feedback.gif`
+
+## 4.7 安全控制（命令白名单 + 手工放通）
 
 能力：
 
@@ -243,7 +281,7 @@ CLI：
 - `/Users/ruibinhuang/repos/nanobot/nanobot/agent/tools/shell.py`
 - `/Users/ruibinhuang/repos/nanobot/nanobot/cli/commands.py`
 
-## 4.7 规划与案例学习能力
+## 4.8 规划与案例学习能力
 
 能力：
 
@@ -255,7 +293,7 @@ CLI：
 - `/Users/ruibinhuang/repos/nanobot/nanobot/agent/tools/planning.py`
 - `/Users/ruibinhuang/repos/nanobot/nanobot/agent/tools/cases.py`
 
-## 4.8 并发稳定性增强
+## 4.9 并发稳定性增强
 
 能力：
 

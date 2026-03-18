@@ -65,6 +65,12 @@ nanobot agent
 检查 /var/log/system.log 最近 200 行是否有 error，并给出结论
 ```
 
+## 排障演示动图
+
+HCIGuard 现在会把排障过程更清楚地展示出来：不仅有阶段进度，还会说明为什么查这一步、在长耗时阶段输出 heartbeat，并在最终结论前补一条简短过程摘要。
+
+![HCIGuard 排障强反馈演示](assets/demo/troubleshooting-strong-feedback.gif)
+
 ## 端到端排障示例
 
 典型处理闭环如下：
@@ -96,6 +102,7 @@ nanobot agent
 
 - 使用受控、只读的诊断工具读取日志和检查主机状态
 - 提供高频只读排障调查动作：`find_logs`、`read_log_tail`、`search_log`、`service_status`、`process_snapshot`、`journal_tail`、`disk_snapshot`、`network_snapshot`、`find_recent_files`
+- 在排障过程中持续展示阶段反馈、调查原因、长耗时 heartbeat 和结论前摘要
 - 将排障过程沉淀为可检索案例
 - 执行巡检、生成报告，并在满足条件时自动转案例
 - 用只读执行、人工放通和统一审计控制风险
@@ -113,7 +120,7 @@ nanobot agent
 当前面向 HCI 的核心能力：
 
 - 诊断：`diagnose_log_read`、`diagnose_log_search`、`diagnose_system_status`
-- 排障：优先调查动作，必要时回退 `exec`
+- 排障：调查优先的只读排障流程、强进度反馈、确认后多节点扩查，必要时回退 `exec`
 - 案例：记录、导入、检索、查看
 - 巡检：日志扫描、`command/journal` 目标、报告输出、定时执行
 - 安全：只读 `exec`、审批文件、统一命令审计
@@ -165,7 +172,7 @@ flowchart LR
 - HCI 巡检节点：
   部署在具备受控只读权限的节点上，直接读取目标日志并执行受限诊断命令
 
-当前实现最适合单机或单节点诊断。跨主机统一编排还属于下一阶段能力，不是当前 V1 的完成项。
+当前实现最适合单机或单节点诊断。当前已经支持在用户确认后的受限多节点只读排查，但更通用的跨主机统一编排仍属于下一阶段能力，还不是完整泛化的 V1 能力。
 
 ## Roadmap
 

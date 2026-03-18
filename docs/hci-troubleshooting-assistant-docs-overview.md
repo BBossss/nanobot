@@ -78,6 +78,17 @@
 - 明确下一阶段优先打穿哪几个高频场景
 - 明确第一个优先场景的输入边界、日志入口与落地拆解方向
 
+### 2.4.1 近期专题设计
+
+- [交互式排障多节点能力设计](/Users/ruibinhuang/repos/nanobot/docs/superpowers/specs/2026-03-18-cluster-aware-troubleshooting-design.md)
+- [排障强反馈设计](/Users/ruibinhuang/repos/nanobot/docs/superpowers/specs/2026-03-18-troubleshooting-strong-feedback-design.md)
+
+作用：
+
+- 说明最近一轮交互式排障体验增强的设计边界
+- 说明多节点确认、进度反馈、heartbeat、过程摘要等能力如何落地
+- 帮助后来者快速找到与当前代码最贴近的专项设计文档
+
 适合回答的问题：
 
 - 当前 V1 完成度到哪一步
