@@ -1662,7 +1662,7 @@ class AgentLoop:
                 if tool_summary:
                     body = f"{tool_summary}\n当前倾向：{tendency_text}"
                 else:
-                    body = f"证据缺口：当前回复未展开可核对证据。\n当前倾向：{tendency_text}"
+                    body = "证据缺口：当前回复未展开可核对证据。"
         if not body:
             body = final_content.strip()
         return self._ensure_minimal_uncertainty_and_next_step(body)

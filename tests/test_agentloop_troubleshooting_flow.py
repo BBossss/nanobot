@@ -567,7 +567,7 @@ async def test_evidence_first_result_shaping_downgrades_conclusion_only_reply(
 
     result = await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
 
-    assert "当前倾向" in result
+    assert "当前倾向" not in result
     assert "根因已确认" not in result
     assert "证据缺口" in result
     assert "不确定点" in result
