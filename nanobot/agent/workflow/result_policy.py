@@ -205,7 +205,7 @@ def classify_output_kind(
         return OUTPUT_KIND_ROOT_CAUSE_CANDIDATE
     if looks_like_named_artifact(text, "inspection"):
         return OUTPUT_KIND_INSPECTION_ARTIFACT
-    if looks_like_named_artifact(text, "report"):
+    if looks_like_named_artifact(text, "report", "inspection report"):
         return OUTPUT_KIND_REPORT_ARTIFACT
     if looks_like_named_artifact(text, "case"):
         return OUTPUT_KIND_CASE_ARTIFACT
@@ -217,7 +217,7 @@ def classify_output_kind(
     if looks_like_generic_structured_body(text):
         if has_frontmatter_kind_marker(text, "inspection"):
             return OUTPUT_KIND_INSPECTION_ARTIFACT
-        if has_frontmatter_kind_marker(text, "report"):
+        if has_frontmatter_kind_marker(text, "report", "inspection_report"):
             return OUTPUT_KIND_REPORT_ARTIFACT
         if has_frontmatter_kind_marker(text, "case"):
             return OUTPUT_KIND_CASE_ARTIFACT

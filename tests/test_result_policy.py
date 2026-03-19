@@ -66,6 +66,22 @@ def test_classification_returns_report_artifact_for_structured_report_body() -> 
     )
 
 
+def test_classification_returns_report_artifact_for_plain_markdown_inspection_report_heading() -> None:
+    _assert_classification(
+        user_content="输出 inspection report",
+        final_content="# Inspection report\n\n## Evidence\n- node-a logrotate failed",
+        expected_kind="report_artifact",
+    )
+
+
+def test_classification_returns_report_artifact_for_inspection_report_frontmatter_type() -> None:
+    _assert_classification(
+        user_content="输出 inspection report",
+        final_content="---\ntype: inspection_report\ncase_id: INC-20260319-001\n---\nSummary: service unhealthy",
+        expected_kind="report_artifact",
+    )
+
+
 def test_classification_uses_structured_body_path_for_report_key_value_body() -> None:
     _assert_classification(
         user_content="输出这次故障的 report artifact",
