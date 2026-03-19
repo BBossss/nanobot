@@ -43,6 +43,7 @@ from nanobot.agent.tools.troubleshooting import (
 )
 from nanobot.agent.tools.web import WebFetchTool, WebSearchTool
 from nanobot.agent.workflow import control as workflow_control
+from nanobot.agent.workflow import targeting as workflow_targeting
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.cases.store import CaseStore
@@ -409,10 +410,7 @@ class AgentLoop:
         """Return whether a confirmed multi-target scope may be reused for this turn."""
         if session is None:
             return False
-        return (
-            session.metadata.get("expansion_confirmed") is True
-            and not AgentLoop._workflow_forbids_multi_target(session)
-        )
+        return workflow_targeting.workflow_allows_confirmed_multi_target(session)
 
     async def _run_agent_loop(
         self,
@@ -1172,49 +1170,18 @@ class AgentLoop:
     @staticmethod
     def _workflow_forbids_multi_target(session: Session) -> bool:
         """Return whether workflow scope constraints currently forbid multi-target expansion."""
-        constraints = session.metadata.get("workflow_scope_constraints")
-        return isinstance(constraints, dict) and constraints.get("forbid_multi_target") is True
+        return workflow_targeting.workflow_forbids_multi_target(session)
 
     def _handle_target_expansion_gate(self, session: Session, content: str) -> str | None:
         """Handle confirmation-gated cluster expansion before normal agent execution."""
-        if session.metadata.pop("expansion_skip_reprompt_once", False):
-            return None
-
-        pending = session.metadata.get("pending_target_resolution")
-        token = workflow_control.normalized_reply_token(content)
-        if pending:
-            # A pending multi-target confirmation gate takes precedence over
-            # workflow-control parsing for exact replies such as "继续".
-            if token in {"确认", "继续", "可以查", "yes", "y"}:
-                session.metadata["resolved_target_ids"] = list(pending.get("resolved_target_ids", []))
-                session.metadata["resolved_targets"] = list(pending.get("resolved_targets", []))
-                session.metadata["resolution_reason"] = str(pending.get("reason", ""))
-                session.metadata["expansion_confirmed"] = True
-                session.metadata["pending_target_resolution"] = None
-                if token == "继续":
-                    session.metadata["workflow_paused"] = False
-                    session.metadata["workflow_last_control_input"] = "继续"
-                session.metadata["workflow_skip_control_once"] = True
-                return None
-            if token in {"不用", "先单节点", "no", "n"}:
-                session.metadata["pending_target_resolution"] = None
-                self._clear_confirmed_target_scope(session, skip_reprompt_once=False)
-                return "保持单节点排障模式。如需多节点排查，我会先列出候选节点再请你确认。"
-
-        if self._workflow_forbids_multi_target(session):
-            return None
-
-        resolution = self._resolve_target_intent(content)
-        if not resolution:
-            return None
-
-        session.metadata["pending_target_resolution"] = resolution
-        session.metadata["expansion_confirmed"] = False
-        targets = ", ".join(resolution["resolved_target_ids"])
-        suffix = "。候选范围已截断。" if resolution.get("truncated") else "。"
-        return (
-            f"{resolution['reason']}，候选节点为 {targets}{suffix}"
-            " 如果要切换到多节点排查，请回复“确认”。当前仍保持单节点模式。"
+        return workflow_targeting.handle_target_expansion_gate(
+            session,
+            content,
+            resolve_target_intent=self._resolve_target_intent,
+            clear_confirmed_target_scope=lambda target_session: self._clear_confirmed_target_scope(
+                target_session,
+                skip_reprompt_once=False,
+            ),
         )
 
     def _resolve_target_intent(self, content: str) -> dict[str, Any] | None:
@@ -1243,28 +1210,15 @@ class AgentLoop:
     @staticmethod
     def _build_confirmed_scope_progress(session: Session) -> str | None:
         """Build a progress note for a confirmed multi-target troubleshooting scope."""
-        if not AgentLoop._workflow_allows_confirmed_multi_target(session):
-            return None
-        target_ids = session.metadata.get("resolved_target_ids") or []
-        if not target_ids:
-            return None
-        reason = str(session.metadata.get("resolution_reason", "")).strip()
-        prefix = "已确认多节点排查范围"
-        if reason:
-            return f"{prefix}：{', '.join(target_ids)}。依据：{reason}"
-        return f"{prefix}：{', '.join(target_ids)}。"
+        return workflow_targeting.build_confirmed_scope_progress(session)
 
     @staticmethod
     def _clear_confirmed_target_scope(session: Session, *, skip_reprompt_once: bool) -> None:
         """Clear confirmed multi-target scope after it has been used or rejected."""
-        session.metadata["expansion_confirmed"] = False
-        session.metadata.pop("resolved_target_ids", None)
-        session.metadata.pop("resolved_targets", None)
-        session.metadata.pop("resolution_reason", None)
-        if skip_reprompt_once:
-            session.metadata["expansion_skip_reprompt_once"] = True
-        else:
-            session.metadata.pop("expansion_skip_reprompt_once", None)
+        workflow_targeting.clear_confirmed_target_scope(
+            session,
+            skip_reprompt_once=skip_reprompt_once,
+        )
 
     @staticmethod
     def _record_gate_turn(session: Session, *, user_content: str, assistant_content: str) -> None:

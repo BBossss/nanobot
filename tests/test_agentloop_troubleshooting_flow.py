@@ -64,6 +64,37 @@ async def test_pending_target_expansion_gate_takes_precedence_over_resume_contro
 
 
 @pytest.mark.asyncio
+async def test_pending_target_confirmation_still_beats_resume_after_targeting_extraction(tmp_path: Path) -> None:
+    targeting = TargetingConfig.model_validate(
+        {
+            "targets": [
+                {"id": "node-a", "target": "root@10.0.0.1", "labels": ["storage", "hci"]},
+                {"id": "node-b", "target": "root@10.0.0.2", "labels": ["storage", "hci"]},
+            ],
+            "groups": [{"name": "storage-cluster", "targets": ["node-a", "node-b"]}],
+        }
+    )
+    loop = _make_loop(tmp_path, targeting=targeting)
+    loop.provider.chat = AsyncMock(
+        side_effect=[
+            LLMResponse(
+                content="先对比 storage 集群。",
+                tool_calls=[ToolCallRequest(id="1", name="service_status", arguments={"service": "nginx"})],
+            ),
+            LLMResponse(content="已切换到多节点排查。", tool_calls=[]),
+        ]
+    )
+    loop.tools.execute = AsyncMock(return_value="active")
+
+    first = await loop.process_direct("storage 集群出问题了", session_key="cli:cluster")
+    second = await loop.process_direct("继续", session_key="cli:cluster")
+
+    assert "确认" in first
+    assert "已继续当前排查" not in second
+    assert "多节点" in second
+
+
+@pytest.mark.asyncio
 async def test_pending_target_expansion_continue_clears_paused_workflow_state(tmp_path: Path) -> None:
     targeting = TargetingConfig.model_validate(
         {
