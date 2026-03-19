@@ -339,7 +339,12 @@ def shape_evidence_first_result(
         return final_content
     if session.metadata.get("workflow_result_mode") != "evidence_first":
         return final_content
-    if not workflow_control.looks_like_troubleshooting_content(user_content):
+    kind = classify_output_kind(
+        user_content=user_content,
+        final_content=final_content,
+        messages=messages,
+    )
+    if kind != OUTPUT_KIND_TROUBLESHOOTING_REPLY:
         return final_content
     if not is_troubleshooting_result_candidate(final_content):
         return final_content

@@ -1,3 +1,4 @@
+import pytest
 from types import SimpleNamespace
 
 from nanobot.agent.workflow import result_policy as workflow_result_policy
@@ -239,3 +240,70 @@ def test_evidence_first_still_rewrites_frontmatter_wrapped_troubleshooting_reply
     assert shaped is not None
     assert "当前倾向" in shaped
     assert "不确定点" in shaped
+
+
+def test_shape_evidence_first_result_dispatches_troubleshooting_reply_through_evidence_first_logic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = SimpleNamespace(metadata={"workflow_result_mode": "evidence_first"})
+    final_content = "已确认事实：日志里持续报错。根因已确认，就是日志轮转失败。"
+    monkeypatch.setattr(
+        workflow_result_policy,
+        "classify_output_kind",
+        lambda **_kwargs: workflow_result_policy.OUTPUT_KIND_TROUBLESHOOTING_REPLY,
+    )
+
+    shaped = workflow_result_policy.shape_evidence_first_result(
+        session=session,
+        user_content="帮我先判断一下结果",
+        final_content=final_content,
+        messages=None,
+    )
+
+    assert shaped is not None
+    assert "当前倾向" in shaped
+    assert "根因已确认" not in shaped
+    assert "不确定点" in shaped
+
+
+@pytest.mark.parametrize(
+    ("kind", "final_content"),
+    [
+        (
+            workflow_result_policy.OUTPUT_KIND_INSPECTION_ARTIFACT,
+            "已确认事实：日志里持续报错。根因已确认，就是日志轮转失败。",
+        ),
+        (
+            workflow_result_policy.OUTPUT_KIND_REPORT_ARTIFACT,
+            "已确认事实：日志里持续报错。根因已确认，就是日志轮转失败。",
+        ),
+        (
+            workflow_result_policy.OUTPUT_KIND_CASE_ARTIFACT,
+            "已确认事实：日志里持续报错。根因已确认，就是日志轮转失败。",
+        ),
+        (
+            workflow_result_policy.OUTPUT_KIND_GENERIC_REPLY,
+            "已确认事实：日志里持续报错。根因已确认，就是日志轮转失败。",
+        ),
+    ],
+)
+def test_shape_evidence_first_result_dispatch_leaves_non_troubleshooting_kinds_unchanged(
+    monkeypatch: pytest.MonkeyPatch,
+    kind: str,
+    final_content: str,
+) -> None:
+    session = SimpleNamespace(metadata={"workflow_result_mode": "evidence_first"})
+    monkeypatch.setattr(
+        workflow_result_policy,
+        "classify_output_kind",
+        lambda **_kwargs: kind,
+    )
+
+    shaped = workflow_result_policy.shape_evidence_first_result(
+        session=session,
+        user_content="帮我先判断一下结果",
+        final_content=final_content,
+        messages=None,
+    )
+
+    assert shaped == final_content
