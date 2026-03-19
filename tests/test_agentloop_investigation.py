@@ -212,6 +212,40 @@ async def test_run_agent_loop_emits_heartbeat_for_slow_tool_calls(tmp_path: Path
 
 
 @pytest.mark.asyncio
+async def test_run_agent_loop_still_emits_action_and_heartbeat_after_feedback_extraction(
+    tmp_path: Path,
+) -> None:
+    loop = _make_loop(tmp_path, max_rounds=4)
+    loop._PROGRESS_HEARTBEAT_INITIAL_S = 0.01
+    loop._PROGRESS_HEARTBEAT_INTERVAL_S = 0.01
+    loop.provider.chat = AsyncMock(
+        side_effect=[
+            LLMResponse(
+                content="先看日志。",
+                tool_calls=[ToolCallRequest(id="1", name="read_log_tail", arguments={"path": "/var/log/app.log"})],
+            ),
+            LLMResponse(content="最终结论。", tool_calls=[]),
+        ]
+    )
+
+    async def _slow_execute(*_args, **_kwargs) -> str:
+        await asyncio.sleep(0.03)
+        return "ok"
+
+    loop.tools.execute = AsyncMock(side_effect=_slow_execute)
+    progress: list[str] = []
+
+    final_content, _tools_used, _messages = await loop._run_agent_loop(
+        [{"role": "system", "content": "system"}, {"role": "user", "content": "user"}],
+        on_progress=AsyncMock(side_effect=lambda content, **_: progress.append(content)),
+    )
+
+    assert final_content == "最终结论。"
+    assert any("正在读取日志" in item for item in progress)
+    assert any("仍在读取日志" in item for item in progress)
+
+
+@pytest.mark.asyncio
 async def test_await_tool_with_heartbeat_does_not_leak_shielded_future_exception(tmp_path: Path) -> None:
     loop = _make_loop(tmp_path, max_rounds=4)
     loop._PROGRESS_HEARTBEAT_INITIAL_S = 0.01
