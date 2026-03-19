@@ -57,6 +57,8 @@ async def test_exec_guard_still_blocks_after_user_confirms_continue(tmp_path: Pa
     )
     assert second is not None
     assert "阻止" in second.content
+    session = loop.sessions.get_or_create("cli:direct")
+    assert session.metadata.get("workflow_last_control_input") != "继续"
 
     audit_file = tmp_path / "audit" / "commands.jsonl"
     assert audit_file.exists()

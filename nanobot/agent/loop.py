@@ -1339,12 +1339,27 @@ class AgentLoop:
             return AgentLoop._looks_like_troubleshooting_content(content)
         return False
 
+    @staticmethod
+    def _latest_assistant_turn_requests_continue_confirmation(session: Session) -> bool:
+        """Return whether the last assistant turn asked the user to confirm whether to continue."""
+        for message in reversed(session.get_history(max_messages=12)):
+            if message.get("role") != "assistant":
+                continue
+            content = str(message.get("content") or "").strip()
+            return "请确认是否继续" in content
+        return False
+
     def _handle_workflow_control(self, session: Session, content: str) -> str | None:
         """Persist bounded workflow control state and return a short acknowledgement."""
         if session.metadata.pop("workflow_skip_control_once", False):
             return None
 
         intent = self._parse_troubleshooting_control_intent(content)
+        if (
+            intent == "resume"
+            and self._latest_assistant_turn_requests_continue_confirmation(session)
+        ):
+            intent = None
         if intent is None and self._should_consider_result_mode_control(session, content):
             intent = self._parse_result_mode_control_intent(content)
         if intent is None:
