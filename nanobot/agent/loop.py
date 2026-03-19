@@ -42,6 +42,7 @@ from nanobot.agent.tools.troubleshooting import (
     ServiceStatusTool,
 )
 from nanobot.agent.tools.web import WebFetchTool, WebSearchTool
+from nanobot.agent.workflow import control as workflow_control
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.cases.store import CaseStore
@@ -89,27 +90,6 @@ class AgentLoop:
     _TOOL_RESULT_MAX_CHARS = 500
     _PROGRESS_HEARTBEAT_INITIAL_S = 3.0
     _PROGRESS_HEARTBEAT_INTERVAL_S = 5.0
-    _CONTROL_BOUNDARY_CHARS = {"，", ",", "。", "；", ";", "：", ":", "、", "！", "!", "？", "?"}
-    _TROUBLESHOOTING_CONTROL_PHRASES: tuple[tuple[str, str], ...] = (
-        ("暂停", "pause"),
-        ("继续", "resume"),
-        ("只查日志", "change_focus"),
-        ("先只看日志", "change_focus"),
-        ("不要多节点", "narrow_scope"),
-        ("先别扩到多节点", "narrow_scope"),
-    )
-    _RESULT_MODE_ENABLE_PHRASES: tuple[str, ...] = (
-        "先别急着下结论",
-        "先给证据再说判断",
-        "先别定性",
-        "先证据后判断",
-    )
-    _RESULT_MODE_DISABLE_PHRASES: tuple[str, ...] = (
-        "直接说结论",
-        "你可以下判断了",
-        "直接给判断",
-    )
-
     def __init__(
         self,
         bus: MessageBus,
@@ -1181,215 +1161,13 @@ class AgentLoop:
             return f"刚才先检查了{ordered[0]}；下面给出当前判断。"
         return f"刚才先检查了{ordered[0]}，再检查了{ordered[1]}；下面给出当前判断。"
 
-    @staticmethod
-    def _normalized_reply_token(content: str) -> str:
-        return re.sub(r"\s+", "", content.strip().lower())
-
-    @staticmethod
-    def _contains_bounded_phrase(token: str, phrase: str) -> bool:
-        """Return whether a bounded control phrase appears at the start of a turn."""
-        if token == phrase:
-            return True
-        if not token.startswith(phrase):
-            return False
-        if len(token) == len(phrase):
-            return True
-        return token[len(phrase)] in AgentLoop._CONTROL_BOUNDARY_CHARS
-
-    @staticmethod
-    def _contains_bounded_phrase_anywhere(token: str, phrase: str) -> bool:
-        """Return whether a control phrase appears as a punctuation-bounded segment."""
-        start = token.find(phrase)
-        while start != -1:
-            before_ok = start == 0 or token[start - 1] in AgentLoop._CONTROL_BOUNDARY_CHARS
-            end = start + len(phrase)
-            after_ok = end == len(token) or token[end] in AgentLoop._CONTROL_BOUNDARY_CHARS
-            if before_ok and after_ok:
-                return True
-            start = token.find(phrase, start + 1)
-        return False
-
-    @staticmethod
-    def _looks_like_troubleshooting_content(content: str) -> bool:
-        """Return whether the current turn looks like troubleshooting context."""
-        token = AgentLoop._normalized_reply_token(content)
-        strong_markers = (
-            "出问题",
-            "报错",
-            "异常",
-            "故障",
-            "崩溃",
-            "卡住",
-            "超时",
-            "延迟",
-            "服务状态",
-            "排查",
-            "调查",
-            "诊断",
-            "告警",
-        )
-        if any(marker in token for marker in strong_markers):
-            return True
-        resource_nouns = ("网络", "节点", "集群", "进程", "磁盘")
-        if any(noun in token for noun in resource_nouns):
-            resource_cues = (
-                "状态",
-                "异常",
-                "故障",
-                "报错",
-                "告警",
-                "超时",
-                "崩溃",
-                "卡住",
-                "恢复",
-                "排查",
-                "调查",
-                "诊断",
-                "检查",
-                "看",
-                "查",
-                "对比",
-                "快照",
-                "不通",
-                "丢包",
-                "连接不上",
-                "启动失败",
-            )
-            return any(cue in token for cue in resource_cues)
-        if "日志" in token:
-            log_cues = (
-                "排查",
-                "调查",
-                "诊断",
-                "报错",
-                "异常",
-                "故障",
-                "告警",
-                "超时",
-                "崩溃",
-                "卡住",
-                "错误",
-                "恢复",
-                "看日志",
-                "查日志",
-                "读日志",
-            )
-            return any(cue in token for cue in log_cues)
-        return False
-
-    @staticmethod
-    def _parse_troubleshooting_control_intent(content: str) -> str | None:
-        """Map a bounded troubleshooting control phrase to an internal intent."""
-        token = AgentLoop._normalized_reply_token(content)
-        for phrase, intent in AgentLoop._TROUBLESHOOTING_CONTROL_PHRASES:
-            if AgentLoop._contains_bounded_phrase_anywhere(token, phrase):
-                return intent
-        return None
-
-    @staticmethod
-    def _parse_result_mode_control_intent(content: str) -> str | None:
-        """Map a bounded evidence-first phrase to an internal intent."""
-        token = AgentLoop._normalized_reply_token(content)
-        if any(AgentLoop._contains_bounded_phrase(token, phrase) for phrase in AgentLoop._RESULT_MODE_ENABLE_PHRASES):
-            return "evidence_first_enable"
-        if any(AgentLoop._contains_bounded_phrase(token, phrase) for phrase in AgentLoop._RESULT_MODE_DISABLE_PHRASES):
-            return "evidence_first_disable"
-        return None
-
-    @staticmethod
-    def _strip_trailing_control_punctuation(token: str) -> str:
-        """Remove trailing punctuation so standalone control turns can stay bounded."""
-        return token.rstrip("，,。；;：:、！!？?")
-
-    def _is_standalone_result_mode_control(self, content: str) -> bool:
-        """Return whether the current turn is only a result-mode control phrase."""
-        token = self._normalized_reply_token(content)
-        return self._strip_trailing_control_punctuation(token) in {
-            *self._RESULT_MODE_ENABLE_PHRASES,
-            *self._RESULT_MODE_DISABLE_PHRASES,
-        }
-
-    def _should_consider_result_mode_control(self, session: Session, content: str) -> bool:
-        """Return whether result-mode control parsing is allowed for this turn."""
-        if self._looks_like_troubleshooting_content(content):
-            return True
-        if not self._is_standalone_result_mode_control(content):
-            return False
-        if session.metadata.get("workflow_result_mode") == "evidence_first":
-            return True
-        if session.metadata.get("workflow_paused") is True:
-            return True
-        if session.metadata.get("pending_target_resolution") is not None:
-            return True
-        if session.metadata.get("workflow_focus_hint"):
-            return True
-        if session.metadata.get("workflow_scope_constraints"):
-            return True
-        if session.metadata.get("expansion_confirmed") is True:
-            return True
-        return self._latest_user_turn_was_troubleshooting(session)
-
-    @staticmethod
-    def _latest_user_turn_was_troubleshooting(session: Session) -> bool:
-        """Return whether the immediately preceding user turn was troubleshooting-like."""
-        for message in reversed(session.get_history(max_messages=12)):
-            if message.get("role") != "user":
-                continue
-            content = str(message.get("content") or "")
-            return AgentLoop._looks_like_troubleshooting_content(content)
-        return False
-
-    @staticmethod
-    def _latest_assistant_turn_requests_continue_confirmation(session: Session) -> bool:
-        """Return whether the last assistant turn asked the user to confirm whether to continue."""
-        for message in reversed(session.get_history(max_messages=12)):
-            if message.get("role") != "assistant":
-                continue
-            content = str(message.get("content") or "").strip()
-            return "请确认是否继续" in content
-        return False
-
     def _handle_workflow_control(self, session: Session, content: str) -> str | None:
         """Persist bounded workflow control state and return a short acknowledgement."""
-        if session.metadata.pop("workflow_skip_control_once", False):
-            return None
-
-        intent = self._parse_troubleshooting_control_intent(content)
-        if (
-            intent == "resume"
-            and self._latest_assistant_turn_requests_continue_confirmation(session)
-        ):
-            intent = None
-        if intent is None and self._should_consider_result_mode_control(session, content):
-            intent = self._parse_result_mode_control_intent(content)
-        if intent is None:
-            return None
-
-        session.metadata["workflow_last_control_input"] = content.strip()
-
-        if intent == "pause":
-            session.metadata["workflow_paused"] = True
-            return "已暂停当前排查；如需继续，请回复“继续”。"
-        if intent == "resume":
-            session.metadata["workflow_paused"] = False
-            return "已继续当前排查。"
-        if intent == "change_focus":
-            session.metadata["workflow_focus_hint"] = "logs_only"
-            return "后续先按日志方向继续调查。"
-        if intent == "narrow_scope":
-            session.metadata["workflow_scope_constraints"] = {"forbid_multi_target": True}
-            session.metadata["pending_target_resolution"] = None
-            self._clear_confirmed_target_scope(session, skip_reprompt_once=False)
-            return "后续保持单节点模式，不扩到多节点。"
-        if intent == "evidence_first_enable":
-            session.metadata["workflow_result_mode"] = "evidence_first"
-            session.metadata["workflow_result_mode_reason"] = content.strip()
-            return "后续先按证据收口；如果判断还不够稳，我会先列证据和未确认点。"
-        if intent == "evidence_first_disable":
-            session.metadata.pop("workflow_result_mode", None)
-            session.metadata.pop("workflow_result_mode_reason", None)
-            return "已解除证据优先收口；后续可直接给出判断。"
-        return None
+        return workflow_control.handle_workflow_control(
+            session,
+            content,
+            clear_confirmed_target_scope=self._clear_confirmed_target_scope,
+        )
 
     @staticmethod
     def _workflow_forbids_multi_target(session: Session) -> bool:
@@ -1403,7 +1181,7 @@ class AgentLoop:
             return None
 
         pending = session.metadata.get("pending_target_resolution")
-        token = self._normalized_reply_token(content)
+        token = workflow_control.normalized_reply_token(content)
         if pending:
             # A pending multi-target confirmation gate takes precedence over
             # workflow-control parsing for exact replies such as "继续".
@@ -1512,7 +1290,7 @@ class AgentLoop:
         if (
             session.metadata.get("workflow_result_mode") == "evidence_first"
             and content is not None
-            and AgentLoop._looks_like_troubleshooting_content(content)
+            and workflow_control.looks_like_troubleshooting_content(content)
         ):
             lines.append(
                 "- Result shaping: 证据优先收口会改变结果收口方式，但不改变调查动作选择。 "
@@ -1634,7 +1412,7 @@ class AgentLoop:
             return False
         if self._looks_like_structured_artifact_body(content):
             return False
-        return self._looks_like_troubleshooting_content(content) or any(
+        return workflow_control.looks_like_troubleshooting_content(content) or any(
             phrase in content for phrase in ("当前倾向", "根因已确认", "问题已经定位到", "可以确定就是")
         )
 
@@ -1651,7 +1429,7 @@ class AgentLoop:
             return final_content
         if session.metadata.get("workflow_result_mode") != "evidence_first":
             return final_content
-        if not self._looks_like_troubleshooting_content(user_content):
+        if not workflow_control.looks_like_troubleshooting_content(user_content):
             return final_content
         if not self._is_troubleshooting_result_candidate(final_content):
             return final_content

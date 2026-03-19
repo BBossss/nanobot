@@ -111,6 +111,16 @@ async def test_process_direct_pause_stores_workflow_paused_state(tmp_path: Path)
 
 
 @pytest.mark.asyncio
+async def test_process_direct_pause_control_still_works_after_control_extraction(tmp_path: Path) -> None:
+    loop = _make_loop(tmp_path)
+    loop.provider.chat = AsyncMock(side_effect=AssertionError("provider should not be called"))
+
+    result = await loop.process_direct("暂停", session_key="cli:workflow")
+
+    assert "已暂停当前排查" in result
+
+
+@pytest.mark.asyncio
 async def test_process_direct_resume_clears_workflow_paused_state(tmp_path: Path) -> None:
     loop = _make_loop(tmp_path)
     loop.provider.chat = AsyncMock(side_effect=AssertionError("provider should not be called"))
