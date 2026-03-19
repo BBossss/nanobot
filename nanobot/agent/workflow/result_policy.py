@@ -19,6 +19,13 @@ OUTPUT_KIND_ROOT_CAUSE_CANDIDATE = "root_cause_candidate"
 OUTPUT_KIND_GENERIC_REPLY = "generic_reply"
 
 
+def normalize_kind_marker(value: str) -> str:
+    """Normalize lightweight kind markers across headings and frontmatter values."""
+    normalized = value.strip().strip("\"'").lower()
+    normalized = normalized.replace("-", "_").replace(" ", "_")
+    return normalized
+
+
 def build_workflow_runtime_context(session: Session, content: str | None = None) -> str | None:
     """Build bounded workflow hints that shape investigation planning for this turn."""
     lines: list[str] = []
@@ -111,10 +118,10 @@ def extract_top_level_key_names(content: str) -> set[str]:
 
 def has_frontmatter_kind_marker(content: str, *names: str) -> bool:
     """Return whether frontmatter explicitly declares one of the named kinds."""
-    markers = {name.lower().replace(" ", "_") for name in names}
+    markers = {normalize_kind_marker(name) for name in names}
     fields = extract_frontmatter_fields(content)
     for key in ("kind", "type", "artifact", "artifact_kind", "output_kind"):
-        value = fields.get(key, "").replace("-", "_").replace(" ", "_")
+        value = normalize_kind_marker(fields.get(key, ""))
         if value in markers:
             return True
     return False
@@ -125,8 +132,12 @@ def looks_like_named_artifact(content: str, *names: str) -> bool:
     text = content.strip()
     if not text:
         return False
-    pattern = "|".join(re.escape(name) for name in names)
-    return re.search(rf"(?im)^#{1,6}\s+(?:{pattern})\b", text) is not None
+    match = re.search(r"(?im)^#{1,6}\s+(?P<heading>[A-Za-z][A-Za-z _\-]{0,80})$", text)
+    if match is None:
+        return False
+    heading = normalize_kind_marker(match.group("heading"))
+    markers = {normalize_kind_marker(name) for name in names}
+    return heading in markers
 
 
 def looks_like_timeline_artifact(content: str) -> bool:

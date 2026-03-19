@@ -108,10 +108,34 @@ def test_classification_uses_structured_body_path_for_timeline_frontmatter() -> 
     )
 
 
+def test_classification_recognizes_quoted_frontmatter_report_kind() -> None:
+    _assert_classification(
+        user_content="输出 artifact",
+        final_content='---\nkind: "report"\nowner: nanobot\n---\nSummary: service unhealthy',
+        expected_kind="report_artifact",
+    )
+
+
+def test_classification_recognizes_single_quoted_frontmatter_timeline_output_kind() -> None:
+    _assert_classification(
+        user_content="输出 artifact",
+        final_content="---\noutput_kind: 'timeline'\nscope: readonly\n---\nEvent: timeout spike",
+        expected_kind="timeline_artifact",
+    )
+
+
 def test_classification_returns_root_cause_candidate_for_candidate_like_content() -> None:
     _assert_classification(
         user_content="给我一个 root cause candidate",
         final_content="# Root Cause Candidate\nCandidate: 数据库连接池耗尽\nConfidence: medium",
+        expected_kind="root_cause_candidate",
+    )
+
+
+def test_classification_recognizes_hyphenated_root_cause_candidate_heading() -> None:
+    _assert_classification(
+        user_content="输出 artifact",
+        final_content="# Root-Cause Candidate\nCandidate: 数据库连接池耗尽\nConfidence: medium\nEvidence: timeout burst",
         expected_kind="root_cause_candidate",
     )
 
