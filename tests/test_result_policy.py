@@ -28,6 +28,14 @@ def test_classification_returns_inspection_artifact_for_structured_inspection_bo
     )
 
 
+def test_classification_does_not_use_incidental_body_text_to_pick_artifact_kind() -> None:
+    _assert_classification(
+        user_content="输出 report artifact",
+        final_content="Summary: customer mentioned the word case in chat\nEvidence: timeout seen in logs",
+        expected_kind="report_artifact",
+    )
+
+
 def test_classification_uses_structured_body_path_for_inspection_frontmatter() -> None:
     _assert_classification(
         user_content="把这轮检查整理成 inspection artifact",
@@ -84,9 +92,33 @@ def test_classification_returns_timeline_artifact_for_timeline_like_content() ->
     )
 
 
+def test_classification_uses_structured_body_path_for_timeline_frontmatter() -> None:
+    _assert_classification(
+        user_content="整理成 timeline artifact",
+        final_content="---\nowner: nanobot\nscope: readonly\n---\nEvent: 10:05 timeout spike",
+        expected_kind="timeline_artifact",
+    )
+
+
 def test_classification_returns_root_cause_candidate_for_candidate_like_content() -> None:
     _assert_classification(
         user_content="给我一个 root cause candidate",
         final_content="# Root Cause Candidate\nCandidate: 数据库连接池耗尽\nConfidence: medium",
         expected_kind="root_cause_candidate",
+    )
+
+
+def test_classification_uses_structured_body_path_for_root_cause_candidate_key_values() -> None:
+    _assert_classification(
+        user_content="给我一个 root cause candidate artifact",
+        final_content="Candidate: 数据库连接池耗尽\nConfidence: medium\nEvidence: timeout burst",
+        expected_kind="root_cause_candidate",
+    )
+
+
+def test_classification_does_not_treat_generic_candidate_heading_as_root_cause_candidate() -> None:
+    _assert_classification(
+        user_content="给个普通候选项列表",
+        final_content="# Candidate\nOption: retry deploy\nStatus: pending",
+        expected_kind="generic_reply",
     )

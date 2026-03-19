@@ -67,6 +67,46 @@ def looks_like_structured_artifact_body(content: str) -> bool:
     return False
 
 
+def extract_frontmatter_fields(content: str) -> dict[str, str]:
+    """Extract simple frontmatter fields from the top of a structured body."""
+    text = content.strip()
+    if not text.startswith("---\n"):
+        return {}
+    match = re.match(r"(?s)^---\n(?P<body>.*?)\n---(?:\n|$)", text)
+    if match is None:
+        return {}
+    fields: dict[str, str] = {}
+    for line in match.group("body").splitlines():
+        field_match = re.match(r"\s*([A-Za-z][\w\- ]{0,40}):\s*(.+?)\s*$", line)
+        if field_match is None:
+            continue
+        key = field_match.group(1).strip().lower().replace(" ", "_")
+        fields[key] = field_match.group(2).strip().lower()
+    return fields
+
+
+def extract_top_level_key_names(content: str) -> set[str]:
+    """Extract top-level key names from a key/value artifact body."""
+    keys: set[str] = set()
+    for line in content.strip().splitlines():
+        match = re.match(r"\s*([A-Za-z][\w\- ]{0,40}):\s+\S+", line)
+        if match is None:
+            continue
+        keys.add(match.group(1).strip().lower().replace(" ", "_"))
+    return keys
+
+
+def has_frontmatter_kind_marker(content: str, *names: str) -> bool:
+    """Return whether frontmatter explicitly declares one of the named kinds."""
+    markers = {name.lower().replace(" ", "_") for name in names}
+    fields = extract_frontmatter_fields(content)
+    for key in ("kind", "type", "artifact", "artifact_kind", "output_kind"):
+        value = fields.get(key, "").replace("-", "_").replace(" ", "_")
+        if value in markers:
+            return True
+    return False
+
+
 def looks_like_named_artifact(content: str, *names: str) -> bool:
     """Return whether the content declares one of the named artifact headings."""
     text = content.strip()
@@ -83,6 +123,8 @@ def looks_like_timeline_artifact(content: str) -> bool:
         return False
     if looks_like_named_artifact(text, "timeline", "event timeline"):
         return True
+    if has_frontmatter_kind_marker(text, "timeline", "event_timeline"):
+        return True
     return re.search(r"(?m)^\s*-\s+\d{1,2}:\d{2}\s+\S", text) is not None
 
 
@@ -91,12 +133,14 @@ def looks_like_root_cause_candidate(content: str) -> bool:
     text = content.strip()
     if not text:
         return False
-    if looks_like_named_artifact(text, "root cause candidate", "candidate"):
+    if looks_like_named_artifact(text, "root cause candidate"):
         return True
-    return re.search(r"(?im)^candidate:\s+\S+", text) is not None and re.search(
-        r"(?im)^confidence:\s+\S+",
-        text,
-    ) is not None
+    if has_frontmatter_kind_marker(text, "root_cause_candidate", "root cause candidate"):
+        return True
+    key_names = extract_top_level_key_names(text)
+    return {"candidate", "confidence"}.issubset(key_names) and bool(
+        {"evidence", "rationale", "hypothesis"} & key_names
+    )
 
 
 def infer_structured_artifact_kind_from_context(user_content: str) -> str | None:
@@ -108,6 +152,10 @@ def infer_structured_artifact_kind_from_context(user_content: str) -> str | None
         return OUTPUT_KIND_REPORT_ARTIFACT
     if any(token in lowered for token in ("case", "工单", "案件")):
         return OUTPUT_KIND_CASE_ARTIFACT
+    if any(token in lowered for token in ("timeline", "时间线", "时序")):
+        return OUTPUT_KIND_TIMELINE_ARTIFACT
+    if any(token in lowered for token in ("root cause candidate", "root-cause candidate", "根因候选")):
+        return OUTPUT_KIND_ROOT_CAUSE_CANDIDATE
     return None
 
 
@@ -133,12 +181,11 @@ def classify_output_kind(
     if looks_like_named_artifact(text, "case"):
         return OUTPUT_KIND_CASE_ARTIFACT
     if looks_like_structured_artifact_body(text):
-        lowered = text.lower()
-        if "inspection" in lowered:
+        if has_frontmatter_kind_marker(text, "inspection"):
             return OUTPUT_KIND_INSPECTION_ARTIFACT
-        if "report" in lowered:
+        if has_frontmatter_kind_marker(text, "report"):
             return OUTPUT_KIND_REPORT_ARTIFACT
-        if "case" in lowered:
+        if has_frontmatter_kind_marker(text, "case"):
             return OUTPUT_KIND_CASE_ARTIFACT
         if inferred_kind := infer_structured_artifact_kind_from_context(user_content):
             return inferred_kind
