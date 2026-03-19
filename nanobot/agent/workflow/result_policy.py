@@ -99,6 +99,18 @@ def looks_like_root_cause_candidate(content: str) -> bool:
     ) is not None
 
 
+def infer_structured_artifact_kind_from_context(user_content: str) -> str | None:
+    """Infer an artifact kind from the user's request when the body is structured but unnamed."""
+    lowered = user_content.lower()
+    if any(token in lowered for token in ("inspection", "inspect", "检查", "巡检")):
+        return OUTPUT_KIND_INSPECTION_ARTIFACT
+    if any(token in lowered for token in ("report", "报告", "汇报")):
+        return OUTPUT_KIND_REPORT_ARTIFACT
+    if any(token in lowered for token in ("case", "工单", "案件")):
+        return OUTPUT_KIND_CASE_ARTIFACT
+    return None
+
+
 def classify_output_kind(
     *,
     user_content: str,
@@ -128,6 +140,8 @@ def classify_output_kind(
             return OUTPUT_KIND_REPORT_ARTIFACT
         if "case" in lowered:
             return OUTPUT_KIND_CASE_ARTIFACT
+        if inferred_kind := infer_structured_artifact_kind_from_context(user_content):
+            return inferred_kind
     if workflow_control.looks_like_troubleshooting_content(user_content) and (
         workflow_control.looks_like_troubleshooting_content(text)
         or any(phrase in text for phrase in ("当前倾向", "根因已确认", "问题已经定位到", "可以确定就是"))
