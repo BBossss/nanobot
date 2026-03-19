@@ -323,3 +323,35 @@ def test_shape_evidence_first_result_dispatch_leaves_non_troubleshooting_kinds_u
     )
 
     assert shaped == final_content
+
+
+@pytest.mark.parametrize(
+    "final_content",
+    [
+        "# Inspection report\n\n## Evidence\n- node-a logrotate failed\n\n## Conclusion\nPlease review report details.\n",
+        (
+            "---\n"
+            "type: inspection_report\n"
+            "case_id: INC-20260319-001\n"
+            "---\n"
+            "# Inspection report\n\n"
+            "## Evidence\n"
+            "- [node-a/log:42] logrotate failed\n\n"
+            "## Conclusion\n"
+            "Please review report details.\n"
+        ),
+    ],
+)
+def test_shape_evidence_first_result_leaves_inspection_report_variants_unchanged(
+    final_content: str,
+) -> None:
+    session = SimpleNamespace(metadata={"workflow_result_mode": "evidence_first"})
+
+    shaped = workflow_result_policy.shape_evidence_first_result(
+        session=session,
+        user_content="storage 集群出问题了",
+        final_content=final_content,
+        messages=None,
+    )
+
+    assert shaped == final_content
