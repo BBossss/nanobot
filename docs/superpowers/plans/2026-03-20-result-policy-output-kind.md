@@ -31,7 +31,7 @@
 - Modify: `nanobot/agent/workflow/result_policy.py`
 - Create: `tests/test_result_policy.py`
 
-- [ ] **Step 1: Write focused failing classification tests**
+- [x] **Step 1: Write focused failing classification tests**
 
 Add policy-level tests for these cases:
 
@@ -45,7 +45,7 @@ Add policy-level tests for these cases:
 
 Keep the tests narrow and deterministic; do not go through `AgentLoop`.
 
-- [ ] **Step 2: Run the classification tests to verify failure**
+- [x] **Step 2: Run the classification tests to verify failure**
 
 Run:
 
@@ -55,7 +55,7 @@ python3 -m pytest tests/test_result_policy.py -k "classif" -v
 
 Expected: FAIL because no explicit output-kind classifier exists yet.
 
-- [ ] **Step 3: Implement output-kind classification**
+- [x] **Step 3: Implement output-kind classification**
 
 Update `nanobot/agent/workflow/result_policy.py` to add:
 
@@ -65,7 +65,7 @@ Update `nanobot/agent/workflow/result_policy.py` to add:
 
 Do not change the visible shaping behavior in this task.
 
-- [ ] **Step 4: Run the classification tests to verify pass**
+- [x] **Step 4: Run the classification tests to verify pass**
 
 Run:
 
@@ -75,7 +75,7 @@ python3 -m pytest tests/test_result_policy.py -k "classif" -v
 
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add nanobot/agent/workflow/result_policy.py tests/test_result_policy.py
@@ -91,7 +91,7 @@ git commit -m "refactor: add output kind classification to result policy"
 - Modify: `tests/test_result_policy.py`
 - Inspect: `tests/test_agentloop_troubleshooting_flow.py`
 
-- [ ] **Step 1: Write focused failing dispatch tests**
+- [x] **Step 1: Write focused failing dispatch tests**
 
 Add policy-level tests proving:
 
@@ -103,7 +103,7 @@ Add policy-level tests proving:
 
 At least one troubleshooting test must assert strong conclusion downgrade still yields `当前倾向`.
 
-- [ ] **Step 2: Run the policy dispatch tests to verify failure**
+- [x] **Step 2: Run the policy dispatch tests to verify failure**
 
 Run:
 
@@ -113,7 +113,7 @@ python3 -m pytest tests/test_result_policy.py -k "dispatch or shaping" -v
 
 Expected: FAIL because shaping is not yet routed through explicit output kinds.
 
-- [ ] **Step 3: Implement classifier-based dispatch**
+- [x] **Step 3: Implement classifier-based dispatch**
 
 Update `shape_evidence_first_result(...)` so it:
 
@@ -124,7 +124,7 @@ Update `shape_evidence_first_result(...)` so it:
 
 Keep current evidence-first helper behavior unchanged inside the troubleshooting branch.
 
-- [ ] **Step 4: Run policy dispatch tests**
+- [x] **Step 4: Run policy dispatch tests**
 
 Run:
 
@@ -134,7 +134,7 @@ python3 -m pytest tests/test_result_policy.py -k "dispatch or shaping" -v
 
 Expected: PASS
 
-- [ ] **Step 5: Run the existing end-to-end evidence-first regressions**
+- [x] **Step 5: Run the existing end-to-end evidence-first regressions**
 
 Run:
 
@@ -144,7 +144,7 @@ python3 -m pytest tests/test_agentloop_investigation.py tests/test_agentloop_tro
 
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add nanobot/agent/workflow/result_policy.py tests/test_result_policy.py
@@ -158,7 +158,7 @@ git commit -m "refactor: route result shaping through output kinds"
 **Files:**
 - Modify: `docs/superpowers/plans/2026-03-20-result-policy-output-kind.md`
 
-- [ ] **Step 1: Run the core verification suite**
+- [x] **Step 1: Run the core verification suite**
 
 Run:
 
@@ -168,7 +168,7 @@ python3 -m pytest tests/test_result_policy.py tests/test_agentloop_investigation
 
 Expected: PASS
 
-- [ ] **Step 2: Run an adjacent regression slice**
+- [x] **Step 2: Run an adjacent regression slice**
 
 Run:
 
@@ -178,7 +178,7 @@ python3 -m pytest tests/test_exec_dialog_guard.py tests/test_commands.py -v
 
 Expected: PASS
 
-- [ ] **Step 3: Optionally run the full suite if no unrelated failures are already known**
+- [x] **Step 3: Optionally run the full suite if no unrelated failures are already known**
 
 Run:
 
@@ -188,11 +188,11 @@ python3 -m pytest -q
 
 Expected: PASS, or document any unrelated pre-existing failure clearly.
 
-- [ ] **Step 4: Mark completed plan checkboxes**
+- [x] **Step 4: Mark completed plan checkboxes**
 
 Update this plan to reflect actual execution.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/superpowers/plans/2026-03-20-result-policy-output-kind.md
