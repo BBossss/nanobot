@@ -63,8 +63,6 @@ def looks_like_structured_artifact_body(content: str) -> bool:
     text = content.strip()
     if not text:
         return False
-    if text.startswith("---\n") and "\n---" in text:
-        return True
     if re.search(r"(?im)^#{1,6}\s+(inspection|report|case|timeline|root cause candidate)\b", text):
         return True
     if has_frontmatter_kind_marker(
@@ -81,8 +79,6 @@ def looks_like_structured_artifact_body(content: str) -> bool:
     if re.search(r"(?m)^\s*-\s+\[[^\]]+\]\s+\S", text):
         return True
     if looks_like_timeline_artifact(text) or looks_like_root_cause_candidate(text):
-        return True
-    if re.search(r"(?m)^\s*[A-Za-z][\w \-]{1,40}:\s+\S+", text) and "\n" in text:
         return True
     return False
 
@@ -114,6 +110,18 @@ def extract_top_level_key_names(content: str) -> set[str]:
             continue
         keys.add(match.group(1).strip().lower().replace(" ", "_"))
     return keys
+
+
+def looks_like_generic_structured_body(content: str) -> bool:
+    """Return whether the content has a generic structured-body shape."""
+    text = content.strip()
+    if not text:
+        return False
+    if text.startswith("---\n") and "\n---" in text:
+        return True
+    if re.search(r"(?m)^\s*-\s+\[[^\]]+\]\s+\S", text):
+        return True
+    return re.search(r"(?m)^\s*[A-Za-z][\w \-]{1,40}:\s+\S+", text) is not None and "\n" in text
 
 
 def has_frontmatter_kind_marker(content: str, *names: str) -> bool:
@@ -149,8 +157,7 @@ def looks_like_timeline_artifact(content: str) -> bool:
         return True
     if has_frontmatter_kind_marker(text, "timeline", "event_timeline"):
         return True
-    key_names = extract_top_level_key_names(text)
-    return bool({"event", "timestamp"} <= key_names or {"time", "event"} <= key_names)
+    return False
 
 
 def looks_like_root_cause_candidate(content: str) -> bool:
@@ -162,10 +169,7 @@ def looks_like_root_cause_candidate(content: str) -> bool:
         return True
     if has_frontmatter_kind_marker(text, "root_cause_candidate", "root cause candidate"):
         return True
-    key_names = extract_top_level_key_names(text)
-    return {"candidate", "confidence"}.issubset(key_names) and bool(
-        {"evidence", "rationale", "hypothesis"} & key_names
-    )
+    return False
 
 
 def infer_structured_artifact_kind_from_context(user_content: str) -> str | None:
@@ -205,20 +209,24 @@ def classify_output_kind(
         return OUTPUT_KIND_REPORT_ARTIFACT
     if looks_like_named_artifact(text, "case"):
         return OUTPUT_KIND_CASE_ARTIFACT
-    if looks_like_structured_artifact_body(text):
+    if workflow_control.looks_like_troubleshooting_content(user_content) and (
+        workflow_control.looks_like_troubleshooting_content(text)
+        or any(phrase in text for phrase in ("当前倾向", "根因已确认", "问题已经定位到", "可以确定就是"))
+    ):
+        return OUTPUT_KIND_TROUBLESHOOTING_REPLY
+    if looks_like_generic_structured_body(text):
         if has_frontmatter_kind_marker(text, "inspection"):
             return OUTPUT_KIND_INSPECTION_ARTIFACT
         if has_frontmatter_kind_marker(text, "report"):
             return OUTPUT_KIND_REPORT_ARTIFACT
         if has_frontmatter_kind_marker(text, "case"):
             return OUTPUT_KIND_CASE_ARTIFACT
+        if has_frontmatter_kind_marker(text, "timeline", "event_timeline"):
+            return OUTPUT_KIND_TIMELINE_ARTIFACT
+        if has_frontmatter_kind_marker(text, "root_cause_candidate", "root cause candidate"):
+            return OUTPUT_KIND_ROOT_CAUSE_CANDIDATE
         if inferred_kind := infer_structured_artifact_kind_from_context(user_content):
             return inferred_kind
-    if workflow_control.looks_like_troubleshooting_content(user_content) and (
-        workflow_control.looks_like_troubleshooting_content(text)
-        or any(phrase in text for phrase in ("当前倾向", "根因已确认", "问题已经定位到", "可以确定就是"))
-    ):
-        return OUTPUT_KIND_TROUBLESHOOTING_REPLY
     return OUTPUT_KIND_GENERIC_REPLY
 
 

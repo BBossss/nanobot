@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from nanobot.agent.workflow import result_policy as workflow_result_policy
 
 
@@ -41,6 +43,17 @@ def test_classification_uses_structured_body_path_for_inspection_frontmatter() -
         user_content="把这轮检查整理成 inspection artifact",
         final_content="---\ntitle: node-a readonly snapshot\nowner: nanobot\n---\nSummary: nginx active",
         expected_kind="inspection_artifact",
+    )
+
+
+def test_classification_keeps_frontmatter_wrapped_troubleshooting_reply_as_troubleshooting() -> None:
+    _assert_classification(
+        user_content="帮我判断这个服务为什么报错",
+        final_content=(
+            "---\nowner: nanobot\nsource: readonly-check\n---\n"
+            "已确认事实：日志里连续出现连接超时。当前倾向：数据库连接池耗尽。"
+        ),
+        expected_kind="troubleshooting_reply",
     )
 
 
@@ -132,6 +145,19 @@ def test_classification_returns_root_cause_candidate_for_candidate_like_content(
     )
 
 
+def test_classification_keeps_unlabeled_candidate_block_as_troubleshooting_reply() -> None:
+    _assert_classification(
+        user_content="帮我判断这个服务为什么报错",
+        final_content=(
+            "Candidate: 数据库连接池耗尽\n"
+            "Confidence: medium\n"
+            "Evidence: timeout burst\n"
+            "当前倾向：数据库连接池耗尽。"
+        ),
+        expected_kind="troubleshooting_reply",
+    )
+
+
 def test_classification_recognizes_hyphenated_root_cause_candidate_heading() -> None:
     _assert_classification(
         user_content="输出 artifact",
@@ -172,3 +198,44 @@ def test_root_cause_candidate_artifact_is_not_a_troubleshooting_rewrite_candidat
         )
         is False
     )
+
+
+def test_timestamp_event_key_values_stay_troubleshooting_reply_without_explicit_timeline_marker() -> None:
+    _assert_classification(
+        user_content="帮我判断这个服务为什么报错",
+        final_content=(
+            "Timestamp: 10:05\n"
+            "Event: timeout spike\n"
+            "已确认事实：同一时间段请求连续失败。\n"
+            "当前倾向：数据库连接池耗尽。"
+        ),
+        expected_kind="troubleshooting_reply",
+    )
+
+
+def test_frontmatter_wrapped_troubleshooting_reply_stays_rewrite_eligible() -> None:
+    assert (
+        workflow_result_policy.is_troubleshooting_result_candidate(
+            "---\nowner: nanobot\nsource: readonly-check\n---\n"
+            "已确认事实：日志里连续出现连接超时。当前倾向：数据库连接池耗尽。"
+        )
+        is True
+    )
+
+
+def test_evidence_first_still_rewrites_frontmatter_wrapped_troubleshooting_reply() -> None:
+    session = SimpleNamespace(metadata={"workflow_result_mode": "evidence_first"})
+
+    shaped = workflow_result_policy.shape_evidence_first_result(
+        session=session,
+        user_content="帮我判断这个服务为什么报错",
+        final_content=(
+            "---\nowner: nanobot\nsource: readonly-check\n---\n"
+            "已确认事实：日志里连续出现连接超时。当前倾向：数据库连接池耗尽。"
+        ),
+        messages=None,
+    )
+
+    assert shaped is not None
+    assert "当前倾向" in shaped
+    assert "不确定点" in shaped
