@@ -343,7 +343,7 @@ python3 -m pytest tests/test_commands.py -v
 
 Expected: PASS
 
-- [ ] **Step 4: Run a full regression sweep**
+- [x] **Step 4: Run a full regression sweep**
 
 Run:
 
@@ -352,8 +352,6 @@ python3 -m pytest -q
 ```
 
 Expected: PASS
-
-Observed during execution: the refactor-specific suites passed, but the full sweep still hit an unrelated environment-sensitive failure in `tests/test_commands.py::test_onboard_writes_minimal_openai_compatible_config` when run after the rest of the suite. The same command test still passes in isolation and in the adjacent regression slice, so this remains a separate follow-up item rather than a workflow-extraction regression.
 
 - [x] **Step 5: Mark completed plan checkboxes**
 
