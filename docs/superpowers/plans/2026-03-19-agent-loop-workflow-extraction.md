@@ -42,7 +42,7 @@
 - Modify: `tests/test_agentloop_troubleshooting_flow.py`
 - Modify: `tests/test_exec_dialog_guard.py`
 
-- [ ] **Step 1: Add one extraction-focused failing smoke test**
+- [x] **Step 1: Add one extraction-focused failing smoke test**
 
 Add a focused regression in `tests/test_agentloop_troubleshooting_flow.py` that proves `AgentLoop` still routes a standalone troubleshooting control turn through the same visible behavior after the extraction boundary is introduced.
 
@@ -59,7 +59,7 @@ async def test_process_direct_pause_control_still_works_after_control_extraction
     assert "已暂停当前排查" in reply.content
 ```
 
-- [ ] **Step 2: Run the focused tests to verify the current baseline**
+- [x] **Step 2: Run the focused tests to verify the current baseline**
 
 Run:
 
@@ -69,7 +69,7 @@ python3 -m pytest tests/test_agentloop_troubleshooting_flow.py -k "pause or resu
 
 Expected: PASS on the baseline before extraction.
 
-- [ ] **Step 3: Create `workflow/__init__.py` and `workflow/control.py`**
+- [x] **Step 3: Create `workflow/__init__.py` and `workflow/control.py`**
 
 Implement minimal function-oriented exports in `nanobot/agent/workflow/control.py`:
 
@@ -80,7 +80,7 @@ Implement minimal function-oriented exports in `nanobot/agent/workflow/control.p
 
 Do not change session metadata keys.
 
-- [ ] **Step 4: Update `AgentLoop` to delegate control handling**
+- [x] **Step 4: Update `AgentLoop` to delegate control handling**
 
 Replace the inline control parsing path in `nanobot/agent/loop.py` with calls into `nanobot.agent.workflow.control`.
 
@@ -90,7 +90,7 @@ Keep these behaviors unchanged:
 - `继续` must not steal exec confirmation follow-ups
 - `pause/resume/change_focus/narrow_scope/evidence_first` behavior remains identical
 
-- [ ] **Step 5: Run focused regressions**
+- [x] **Step 5: Run focused regressions**
 
 Run:
 
@@ -101,7 +101,7 @@ python3 -m pytest tests/test_exec_dialog_guard.py::test_exec_guard_still_blocks_
 
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add nanobot/agent/workflow/__init__.py nanobot/agent/workflow/control.py nanobot/agent/loop.py tests/test_agentloop_troubleshooting_flow.py tests/test_exec_dialog_guard.py
@@ -118,7 +118,7 @@ git commit -m "refactor: extract workflow control from agent loop"
 - Modify: `tests/test_agentloop_troubleshooting_flow.py`
 - Modify: `tests/test_agentloop_investigation.py`
 
-- [ ] **Step 1: Add one extraction-focused failing smoke test**
+- [x] **Step 1: Add one extraction-focused failing smoke test**
 
 Add a focused regression that proves `AgentLoop` still lets pending target confirmation take precedence over workflow control after the extraction.
 
@@ -130,7 +130,7 @@ async def test_pending_target_confirmation_still_beats_resume_after_targeting_ex
 
 Assert that a pending target-resolution turn with `继续` still proceeds through target confirmation behavior rather than normal resume behavior.
 
-- [ ] **Step 2: Run the focused baseline tests**
+- [x] **Step 2: Run the focused baseline tests**
 
 Run:
 
@@ -140,7 +140,7 @@ python3 -m pytest tests/test_agentloop_troubleshooting_flow.py -k "target_expans
 
 Expected: PASS before extraction.
 
-- [ ] **Step 3: Create `workflow/targeting.py`**
+- [x] **Step 3: Create `workflow/targeting.py`**
 
 Move these helpers into the new module:
 
@@ -152,7 +152,7 @@ Move these helpers into the new module:
 
 Pass only the dependencies needed for intent resolution and scope handling.
 
-- [ ] **Step 4: Update `AgentLoop` to call targeting helpers**
+- [x] **Step 4: Update `AgentLoop` to call targeting helpers**
 
 Replace inline targeting helpers in `nanobot/agent/loop.py` with module calls, preserving this call order in `_process_message(...)`:
 
@@ -160,7 +160,7 @@ Replace inline targeting helpers in `nanobot/agent/loop.py` with module calls, p
 2. workflow control
 3. paused short-circuit
 
-- [ ] **Step 5: Run focused regressions**
+- [x] **Step 5: Run focused regressions**
 
 Run:
 
@@ -171,7 +171,7 @@ python3 -m pytest tests/test_agentloop_investigation.py -k "多节点 or 只查�
 
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add nanobot/agent/workflow/targeting.py nanobot/agent/loop.py tests/test_agentloop_troubleshooting_flow.py tests/test_agentloop_investigation.py
@@ -188,7 +188,7 @@ git commit -m "refactor: extract workflow targeting gate from agent loop"
 - Modify: `tests/test_agentloop_troubleshooting_flow.py`
 - Modify: `tests/test_agentloop_investigation.py`
 
-- [ ] **Step 1: Add one extraction-focused failing smoke test**
+- [x] **Step 1: Add one extraction-focused failing smoke test**
 
 Add a focused regression that proves evidence-first shaping still works through `AgentLoop` after the result-policy extraction boundary is introduced.
 
@@ -199,7 +199,7 @@ def test_evidence_first_result_still_downgrades_strong_conclusion_after_result_p
 
 Keep the assertion user-visible: the final content should contain `当前倾向` and omit undowngraded strong-conclusion wording.
 
-- [ ] **Step 2: Run the focused baseline tests**
+- [x] **Step 2: Run the focused baseline tests**
 
 Run:
 
@@ -209,7 +209,7 @@ python3 -m pytest tests/test_agentloop_investigation.py tests/test_agentloop_tro
 
 Expected: PASS before extraction.
 
-- [ ] **Step 3: Create `workflow/result_policy.py`**
+- [x] **Step 3: Create `workflow/result_policy.py`**
 
 Move these concerns into the module:
 
@@ -221,7 +221,7 @@ Move these concerns into the module:
 - uncertainty / next-step completion
 - `shape_evidence_first_result(...)`
 
-- [ ] **Step 4: Update `AgentLoop` to delegate runtime-context and final shaping**
+- [x] **Step 4: Update `AgentLoop` to delegate runtime-context and final shaping**
 
 Replace the inline calls in `nanobot/agent/loop.py` so:
 
@@ -230,7 +230,7 @@ Replace the inline calls in `nanobot/agent/loop.py` so:
 
 Do not change the existing call order around `_run_agent_loop(...)`.
 
-- [ ] **Step 5: Run focused regressions**
+- [x] **Step 5: Run focused regressions**
 
 Run:
 
@@ -240,7 +240,7 @@ python3 -m pytest tests/test_agentloop_investigation.py tests/test_agentloop_tro
 
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add nanobot/agent/workflow/result_policy.py nanobot/agent/loop.py tests/test_agentloop_investigation.py tests/test_agentloop_troubleshooting_flow.py
@@ -257,13 +257,13 @@ git commit -m "refactor: extract evidence-first result policy from agent loop"
 - Modify: `tests/test_agentloop_investigation.py`
 - Modify: `tests/test_agentloop_troubleshooting_flow.py`
 
-- [ ] **Step 1: Add one extraction-focused failing smoke test**
+- [x] **Step 1: Add one extraction-focused failing smoke test**
 
 Add a focused regression that proves the user-visible progress feedback remains unchanged after the feedback renderer is extracted.
 
 At minimum preserve one action string and one heartbeat string through the normal loop path.
 
-- [ ] **Step 2: Run the focused baseline tests**
+- [x] **Step 2: Run the focused baseline tests**
 
 Run:
 
@@ -273,7 +273,7 @@ python3 -m pytest tests/test_agentloop_investigation.py tests/test_agentloop_tro
 
 Expected: PASS before extraction.
 
-- [ ] **Step 3: Create `workflow/feedback.py`**
+- [x] **Step 3: Create `workflow/feedback.py`**
 
 Move these render helpers into the module:
 
@@ -285,7 +285,7 @@ Move these render helpers into the module:
 
 Keep the module presentation-only.
 
-- [ ] **Step 4: Update `AgentLoop` to call feedback renderers**
+- [x] **Step 4: Update `AgentLoop` to call feedback renderers**
 
 Replace internal rendering helper calls with module calls in:
 
@@ -294,7 +294,7 @@ Replace internal rendering helper calls with module calls in:
 - `_render_progress_heartbeat(...)` call sites
 - process-summary call sites
 
-- [ ] **Step 5: Run focused regressions**
+- [x] **Step 5: Run focused regressions**
 
 Run:
 
@@ -304,7 +304,7 @@ python3 -m pytest tests/test_agentloop_investigation.py tests/test_agentloop_tro
 
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add nanobot/agent/workflow/feedback.py nanobot/agent/loop.py tests/test_agentloop_investigation.py tests/test_agentloop_troubleshooting_flow.py
@@ -319,11 +319,11 @@ git commit -m "refactor: extract investigation feedback rendering from agent loo
 - Modify: `nanobot/agent/loop.py`
 - Modify: `docs/superpowers/plans/2026-03-19-agent-loop-workflow-extraction.md`
 
-- [ ] **Step 1: Remove dead helpers and tighten imports**
+- [x] **Step 1: Remove dead helpers and tighten imports**
 
 Delete helper methods from `nanobot/agent/loop.py` that are no longer used after the extraction, and simplify imports so the file reads as an orchestrator rather than a rule holder.
 
-- [ ] **Step 2: Run the core verification suite**
+- [x] **Step 2: Run the core verification suite**
 
 Run:
 
@@ -333,7 +333,7 @@ python3 -m pytest tests/test_agentloop_investigation.py tests/test_agentloop_tro
 
 Expected: PASS
 
-- [ ] **Step 3: Run one adjacent regression slice**
+- [x] **Step 3: Run one adjacent regression slice**
 
 Run:
 
@@ -353,11 +353,13 @@ python3 -m pytest -q
 
 Expected: PASS
 
-- [ ] **Step 5: Mark completed plan checkboxes**
+Observed during execution: the refactor-specific suites passed, but the full sweep still hit an unrelated environment-sensitive failure in `tests/test_commands.py::test_onboard_writes_minimal_openai_compatible_config` when run after the rest of the suite. The same command test still passes in isolation and in the adjacent regression slice, so this remains a separate follow-up item rather than a workflow-extraction regression.
+
+- [x] **Step 5: Mark completed plan checkboxes**
 
 Update this plan so completed tasks reflect reality.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add nanobot/agent/loop.py docs/superpowers/plans/2026-03-19-agent-loop-workflow-extraction.md
