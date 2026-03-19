@@ -43,6 +43,7 @@ from nanobot.agent.tools.troubleshooting import (
 )
 from nanobot.agent.tools.web import WebFetchTool, WebSearchTool
 from nanobot.agent.workflow import control as workflow_control
+from nanobot.agent.workflow import result_policy as workflow_result_policy
 from nanobot.agent.workflow import targeting as workflow_targeting
 from nanobot.bus.events import InboundMessage, OutboundMessage
 from nanobot.bus.queue import MessageBus
@@ -1229,50 +1230,12 @@ class AgentLoop:
     @staticmethod
     def _build_workflow_runtime_context(session: Session, content: str | None = None) -> str | None:
         """Build bounded workflow hints that shape investigation planning for this turn."""
-        lines: list[str] = []
-        focus_hint = session.metadata.get("workflow_focus_hint")
-        if focus_hint == "logs_only":
-            lines.append(
-                "- Focus hint: prioritize log-oriented readonly checks first when choosing the next step; "
-                "keep using judgment and switch direction if logs are insufficient."
-            )
-        if AgentLoop._workflow_forbids_multi_target(session):
-            lines.append(
-                "- Scope constraint: stay in single-target troubleshooting mode for this turn; "
-                "do not expand or reuse multi-target scope unless the user explicitly changes it."
-            )
-        if (
-            session.metadata.get("workflow_result_mode") == "evidence_first"
-            and content is not None
-            and workflow_control.looks_like_troubleshooting_content(content)
-        ):
-            lines.append(
-                "- Result shaping: 证据优先收口会改变结果收口方式，但不改变调查动作选择。 "
-                "This only changes how the result is presented; 调查动作选择仍然是判断驱动的，不因该模式改变。"
-            )
-        if not lines:
-            return None
-        return (
-            ContextBuilder._RUNTIME_CONTEXT_TAG
-            + "\nWorkflow Controls:\n"
-            + "\n".join(lines)
-        )
+        return workflow_result_policy.build_workflow_runtime_context(session, content)
 
     @staticmethod
     def _looks_like_structured_artifact_body(content: str) -> bool:
         """Return whether the reply looks like a structured artifact body that should stay untouched."""
-        text = content.strip()
-        if not text:
-            return False
-        if text.startswith("---\n") and "\n---" in text:
-            return True
-        if re.search(r"(?im)^#{1,6}\s+(inspection|report|case)\b", text):
-            return True
-        if re.search(r"(?m)^\s*-\s+\[[^\]]+\]\s+\S", text):
-            return True
-        if re.search(r"(?m)^\s*[A-Za-z][\w \-]{1,40}:\s+\S+", text) and "\n" in text:
-            return True
-        return False
+        return workflow_result_policy.looks_like_structured_artifact_body(content)
 
     @staticmethod
     def _split_troubleshooting_evidence_and_conclusion(content: str) -> tuple[str, str | None, str]:
@@ -1362,13 +1325,7 @@ class AgentLoop:
 
     def _is_troubleshooting_result_candidate(self, content: str) -> bool:
         """Return whether a troubleshooting reply should be reshaped in evidence-first mode."""
-        if not content.strip():
-            return False
-        if self._looks_like_structured_artifact_body(content):
-            return False
-        return workflow_control.looks_like_troubleshooting_content(content) or any(
-            phrase in content for phrase in ("当前倾向", "根因已确认", "问题已经定位到", "可以确定就是")
-        )
+        return workflow_result_policy.is_troubleshooting_result_candidate(content)
 
     def _shape_evidence_first_result(
         self,
@@ -1379,33 +1336,9 @@ class AgentLoop:
         messages: list[dict[str, Any]] | None = None,
     ) -> str | None:
         """Boundedly reshape troubleshooting conclusions when evidence-first mode is active."""
-        if final_content is None or session is None:
-            return final_content
-        if session.metadata.get("workflow_result_mode") != "evidence_first":
-            return final_content
-        if not workflow_control.looks_like_troubleshooting_content(user_content):
-            return final_content
-        if not self._is_troubleshooting_result_candidate(final_content):
-            return final_content
-
-        evidence_text, tendency_text, suffix_text = self._split_troubleshooting_evidence_and_conclusion(final_content)
-        sections = [part.strip() for part in (evidence_text, suffix_text) if part.strip()]
-        if not sections and tendency_text:
-            if tool_summary := self._summarize_tool_evidence(messages):
-                sections.append(tool_summary)
-        body = self._rewrite_remaining_strong_conclusions("\n".join(sections).strip())
-        evidence_signals = self._count_evidence_signals(body)
-        has_explicit_evidence_labels = any(marker in body for marker in ("已确认事实", "关键证据"))
-
-        if tendency_text:
-            if body and (evidence_signals >= 2 or has_explicit_evidence_labels):
-                body = f"{body}\n当前倾向：{tendency_text}"
-            elif not body:
-                tool_summary = self._summarize_tool_evidence(messages)
-                if tool_summary:
-                    body = f"{tool_summary}\n当前倾向：{tendency_text}"
-                else:
-                    body = "证据缺口：当前回复未展开可核对证据。"
-        if not body:
-            body = final_content.strip()
-        return self._ensure_minimal_uncertainty_and_next_step(body)
+        return workflow_result_policy.shape_evidence_first_result(
+            session=session,
+            user_content=user_content,
+            final_content=final_content,
+            messages=messages,
+        )

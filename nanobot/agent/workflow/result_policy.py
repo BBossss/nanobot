@@ -1,0 +1,196 @@
+"""Troubleshooting result shaping helpers."""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from nanobot.agent.context import ContextBuilder
+from nanobot.agent.workflow import control as workflow_control
+from nanobot.agent.workflow import targeting as workflow_targeting
+from nanobot.session.manager import Session
+
+
+def build_workflow_runtime_context(session: Session, content: str | None = None) -> str | None:
+    """Build bounded workflow hints that shape investigation planning for this turn."""
+    lines: list[str] = []
+    focus_hint = session.metadata.get("workflow_focus_hint")
+    if focus_hint == "logs_only":
+        lines.append(
+            "- Focus hint: prioritize log-oriented readonly checks first when choosing the next step; "
+            "keep using judgment and switch direction if logs are insufficient."
+        )
+    if workflow_targeting.workflow_forbids_multi_target(session):
+        lines.append(
+            "- Scope constraint: stay in single-target troubleshooting mode for this turn; "
+            "do not expand or reuse multi-target scope unless the user explicitly changes it."
+        )
+    if (
+        session.metadata.get("workflow_result_mode") == "evidence_first"
+        and content is not None
+        and workflow_control.looks_like_troubleshooting_content(content)
+    ):
+        lines.append(
+            "- Result shaping: 证据优先收口会改变结果收口方式，但不改变调查动作选择。 "
+            "This only changes how the result is presented; 调查动作选择仍然是判断驱动的，不因该模式改变。"
+        )
+    if not lines:
+        return None
+    return (
+        ContextBuilder._RUNTIME_CONTEXT_TAG
+        + "\nWorkflow Controls:\n"
+        + "\n".join(lines)
+    )
+
+
+def looks_like_structured_artifact_body(content: str) -> bool:
+    """Return whether the reply looks like a structured artifact body that should stay untouched."""
+    text = content.strip()
+    if not text:
+        return False
+    if text.startswith("---\n") and "\n---" in text:
+        return True
+    if re.search(r"(?im)^#{1,6}\s+(inspection|report|case)\b", text):
+        return True
+    if re.search(r"(?m)^\s*-\s+\[[^\]]+\]\s+\S", text):
+        return True
+    if re.search(r"(?m)^\s*[A-Za-z][\w \-]{1,40}:\s+\S+", text) and "\n" in text:
+        return True
+    return False
+
+
+def split_troubleshooting_evidence_and_conclusion(content: str) -> tuple[str, str | None, str]:
+    """Split a reply into evidence text, a downgraded tendency phrase, and trailing content."""
+    patterns: tuple[tuple[re.Pattern[str], str], ...] = (
+        (re.compile(r"根因已确认[，,]*(?:就是|是)(?P<target>[^。！？\n，,;；]+)"), "现有证据更偏向{target}"),
+        (re.compile(r"问题已经定位到(?P<target>[^。！？\n，,;；]+)"), "问题更集中在{target}"),
+        (re.compile(r"可以确定(?:就是|是)(?P<target>[^。！？\n，,;；]+)"), "现有证据更偏向{target}"),
+    )
+    earliest: tuple[int, int, re.Match[str], str] | None = None
+    for pattern, template in patterns:
+        match = pattern.search(content)
+        if match is None:
+            continue
+        candidate = (match.start(), match.end(), match, template)
+        if earliest is None or candidate[0] < earliest[0]:
+            earliest = candidate
+    if earliest is None:
+        return content.strip(), None, ""
+
+    start, end, match, template = earliest
+    evidence = content[:start].rstrip("，,。；; \n")
+    suffix = content[end:].lstrip("，,。；; \n")
+    target = str(match.groupdict().get("target", "")).strip("，,。；; \n")
+    tendency = template.format(target=target)
+    if tendency and not tendency.endswith("。"):
+        tendency = tendency + "。"
+    return evidence, tendency, suffix
+
+
+def count_evidence_signals(content: str) -> int:
+    """Count coarse evidence-bearing segments to decide whether a tendency is justified."""
+    signals = 0
+    for chunk in re.split(r"[。\n！？!?；;]+", content):
+        token = chunk.strip()
+        if not token:
+            continue
+        if any(marker in token for marker in ("已确认事实", "关键证据", "事实", "证据")):
+            signals += 1
+            continue
+        if any(marker in token for marker in ("日志", "报错", "错误", "异常", "超时", "失败", "卡住", "告警", "堆栈", "服务状态", "进程状态", "磁盘状态", "网络状态", "对比", "检查", "看到", "发现", "显示")):
+            signals += 1
+    return signals
+
+
+def rewrite_remaining_strong_conclusions(content: str) -> str:
+    """Remove any remaining strong-conclusion phrases inside preserved body text."""
+    patterns: tuple[tuple[re.Pattern[str], str], ...] = (
+        (re.compile(r"根因已确认[，,]*(?:就是|是)(?P<target>[^。！？\n，,;；]+)"), "现有证据更偏向{target}"),
+        (re.compile(r"问题已经定位到(?P<target>[^。！？\n，,;；]+)"), "问题更集中在{target}"),
+        (re.compile(r"可以确定(?:就是|是)(?P<target>[^。！？\n，,;；]+)"), "现有证据更偏向{target}"),
+    )
+
+    rewritten = content
+    for pattern, _template in patterns:
+        rewritten = pattern.sub("", rewritten)
+    rewritten = re.sub(r"(^|[\n])[\s，,。；;]+", r"\1", rewritten)
+    return rewritten
+
+
+def summarize_tool_evidence(messages: list[dict[str, Any]] | None) -> str | None:
+    """Build a minimal visible evidence line from current-turn tool results when needed."""
+    if not messages:
+        return None
+    for message in messages:
+        if message.get("role") != "tool":
+            continue
+        content = str(message.get("content") or "").strip()
+        if not content:
+            continue
+        summary = re.split(r"[\n。！？!?]", content, maxsplit=1)[0].strip()
+        if summary:
+            return f"已确认事实：本轮只读调查拿到了证据输出，例如 {summary[:80]}。"
+        return "已确认事实：本轮只读调查拿到了证据输出。"
+    return None
+
+
+def ensure_minimal_uncertainty_and_next_step(content: str) -> str:
+    """Append minimal uncertainty and next-step lines if they are missing."""
+    lines = [line.rstrip() for line in content.strip().splitlines() if line.strip()]
+    combined = "\n".join(lines)
+    if not any(marker in combined for marker in ("不确定", "仍需", "还需要", "还要", "未确认", "风险", "待验证")):
+        lines.append("不确定点：还需要再核对一轮只读证据。")
+    if not any(marker in combined for marker in ("下一步", "建议", "验证", "先核对", "再确认", "继续检查")):
+        lines.append("下一步：建议先补一条最能验证当前判断的只读检查。")
+    return "\n".join(lines)
+
+
+def is_troubleshooting_result_candidate(content: str) -> bool:
+    """Return whether a troubleshooting reply should be reshaped in evidence-first mode."""
+    if not content.strip():
+        return False
+    if looks_like_structured_artifact_body(content):
+        return False
+    return workflow_control.looks_like_troubleshooting_content(content) or any(
+        phrase in content for phrase in ("当前倾向", "根因已确认", "问题已经定位到", "可以确定就是")
+    )
+
+
+def shape_evidence_first_result(
+    *,
+    session: Session | None,
+    user_content: str,
+    final_content: str | None,
+    messages: list[dict[str, Any]] | None = None,
+) -> str | None:
+    """Boundedly reshape troubleshooting conclusions when evidence-first mode is active."""
+    if final_content is None or session is None:
+        return final_content
+    if session.metadata.get("workflow_result_mode") != "evidence_first":
+        return final_content
+    if not workflow_control.looks_like_troubleshooting_content(user_content):
+        return final_content
+    if not is_troubleshooting_result_candidate(final_content):
+        return final_content
+
+    evidence_text, tendency_text, suffix_text = split_troubleshooting_evidence_and_conclusion(final_content)
+    sections = [part.strip() for part in (evidence_text, suffix_text) if part.strip()]
+    if not sections and tendency_text:
+        if tool_summary := summarize_tool_evidence(messages):
+            sections.append(tool_summary)
+    body = rewrite_remaining_strong_conclusions("\n".join(sections).strip())
+    evidence_signals = count_evidence_signals(body)
+    has_explicit_evidence_labels = any(marker in body for marker in ("已确认事实", "关键证据"))
+
+    if tendency_text:
+        if body and (evidence_signals >= 2 or has_explicit_evidence_labels):
+            body = f"{body}\n当前倾向：{tendency_text}"
+        elif not body:
+            tool_summary = summarize_tool_evidence(messages)
+            if tool_summary:
+                body = f"{tool_summary}\n当前倾向：{tendency_text}"
+            else:
+                body = "证据缺口：当前回复未展开可核对证据。"
+    if not body:
+        body = final_content.strip()
+    return ensure_minimal_uncertainty_and_next_step(body)

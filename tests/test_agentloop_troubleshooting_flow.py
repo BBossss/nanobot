@@ -614,6 +614,28 @@ async def test_evidence_first_result_shaping_downgrades_strong_conclusion_and_ke
 
 
 @pytest.mark.asyncio
+async def test_evidence_first_result_still_downgrades_strong_conclusion_after_result_policy_extraction(
+    tmp_path: Path,
+) -> None:
+    loop = _make_loop(tmp_path)
+    loop.provider.chat = AsyncMock(
+        return_value=LLMResponse(
+            content="已确认事实：日志里持续报错。根因已确认，就是日志轮转失败。",
+            tool_calls=[],
+        )
+    )
+    session = loop.sessions.get_or_create("cli:workflow")
+    session.metadata["workflow_result_mode"] = "evidence_first"
+    session.metadata["workflow_result_mode_reason"] = "先别急着下结论"
+    loop.sessions.save(session)
+
+    result = await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
+
+    assert "当前倾向" in result
+    assert "根因已确认" not in result
+
+
+@pytest.mark.asyncio
 async def test_evidence_first_result_shaping_downgrades_conclusion_only_reply(
     tmp_path: Path,
 ) -> None:
