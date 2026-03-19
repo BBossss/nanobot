@@ -165,6 +165,16 @@ Core HCI additions in this fork:
 - Command safety and audit: [command_guard.py](nanobot/security/command_guard.py), [audit.py](nanobot/security/audit.py)
 - Mattermost channel: [mattermost.py](nanobot/channels/mattermost.py)
 
+Workflow extraction note:
+
+- `AgentLoop` now stays focused on orchestration: session handling, context assembly, provider/tool dispatch, and final persistence.
+- Troubleshooting-specific workflow behavior lives under `nanobot/agent/workflow/`:
+  - `control.py`: pause/resume, focus/scope controls, evidence-first mode switching
+  - `targeting.py`: confirmation-gated multi-target scope handling
+  - `result_policy.py`: evidence-first runtime context and final result shaping
+  - `feedback.py`: action/reason/heartbeat/process-summary rendering
+- This keeps troubleshooting capability unchanged while making workflow rules easier to evolve without growing `nanobot/agent/loop.py` in the same way again.
+
 ## Deployment Modes
 
 Current recommended deployment modes:
