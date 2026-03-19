@@ -10,6 +10,14 @@ from nanobot.agent.workflow import control as workflow_control
 from nanobot.agent.workflow import targeting as workflow_targeting
 from nanobot.session.manager import Session
 
+OUTPUT_KIND_TROUBLESHOOTING_REPLY = "troubleshooting_reply"
+OUTPUT_KIND_INSPECTION_ARTIFACT = "inspection_artifact"
+OUTPUT_KIND_REPORT_ARTIFACT = "report_artifact"
+OUTPUT_KIND_CASE_ARTIFACT = "case_artifact"
+OUTPUT_KIND_TIMELINE_ARTIFACT = "timeline_artifact"
+OUTPUT_KIND_ROOT_CAUSE_CANDIDATE = "root_cause_candidate"
+OUTPUT_KIND_GENERIC_REPLY = "generic_reply"
+
 
 def build_workflow_runtime_context(session: Session, content: str | None = None) -> str | None:
     """Build bounded workflow hints that shape investigation planning for this turn."""
@@ -57,6 +65,75 @@ def looks_like_structured_artifact_body(content: str) -> bool:
     if re.search(r"(?m)^\s*[A-Za-z][\w \-]{1,40}:\s+\S+", text) and "\n" in text:
         return True
     return False
+
+
+def looks_like_named_artifact(content: str, *names: str) -> bool:
+    """Return whether the content declares one of the named artifact headings."""
+    text = content.strip()
+    if not text:
+        return False
+    pattern = "|".join(re.escape(name) for name in names)
+    return re.search(rf"(?im)^#{1,6}\s+(?:{pattern})\b", text) is not None
+
+
+def looks_like_timeline_artifact(content: str) -> bool:
+    """Return whether the content is a timeline-like artifact body."""
+    text = content.strip()
+    if not text:
+        return False
+    if looks_like_named_artifact(text, "timeline", "event timeline"):
+        return True
+    return re.search(r"(?m)^\s*-\s+\d{1,2}:\d{2}\s+\S", text) is not None
+
+
+def looks_like_root_cause_candidate(content: str) -> bool:
+    """Return whether the content is a root-cause-candidate style artifact body."""
+    text = content.strip()
+    if not text:
+        return False
+    if looks_like_named_artifact(text, "root cause candidate", "candidate"):
+        return True
+    return re.search(r"(?im)^candidate:\s+\S+", text) is not None and re.search(
+        r"(?im)^confidence:\s+\S+",
+        text,
+    ) is not None
+
+
+def classify_output_kind(
+    *,
+    user_content: str,
+    final_content: str | None,
+    messages: list[dict[str, Any]] | None = None,
+) -> str:
+    """Classify the final output into a stable lightweight kind label."""
+    del messages  # Reserved for future evidence-aware classification refinements.
+    text = (final_content or "").strip()
+    if not text:
+        return OUTPUT_KIND_GENERIC_REPLY
+    if looks_like_timeline_artifact(text):
+        return OUTPUT_KIND_TIMELINE_ARTIFACT
+    if looks_like_root_cause_candidate(text):
+        return OUTPUT_KIND_ROOT_CAUSE_CANDIDATE
+    if looks_like_named_artifact(text, "inspection"):
+        return OUTPUT_KIND_INSPECTION_ARTIFACT
+    if looks_like_named_artifact(text, "report"):
+        return OUTPUT_KIND_REPORT_ARTIFACT
+    if looks_like_named_artifact(text, "case"):
+        return OUTPUT_KIND_CASE_ARTIFACT
+    if looks_like_structured_artifact_body(text):
+        lowered = text.lower()
+        if "inspection" in lowered:
+            return OUTPUT_KIND_INSPECTION_ARTIFACT
+        if "report" in lowered:
+            return OUTPUT_KIND_REPORT_ARTIFACT
+        if "case" in lowered:
+            return OUTPUT_KIND_CASE_ARTIFACT
+    if workflow_control.looks_like_troubleshooting_content(user_content) and (
+        workflow_control.looks_like_troubleshooting_content(text)
+        or any(phrase in text for phrase in ("当前倾向", "根因已确认", "问题已经定位到", "可以确定就是"))
+    ):
+        return OUTPUT_KIND_TROUBLESHOOTING_REPLY
+    return OUTPUT_KIND_GENERIC_REPLY
 
 
 def split_troubleshooting_evidence_and_conclusion(content: str) -> tuple[str, str | None, str]:
