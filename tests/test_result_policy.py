@@ -92,6 +92,14 @@ def test_classification_returns_timeline_artifact_for_timeline_like_content() ->
     )
 
 
+def test_classification_does_not_treat_timestamped_troubleshooting_summary_as_timeline() -> None:
+    _assert_classification(
+        user_content="帮我判断这个服务为什么报错",
+        final_content="- 10:05 看到 timeout\n- 10:07 再次重试失败\n当前倾向：数据库连接池耗尽。",
+        expected_kind="troubleshooting_reply",
+    )
+
+
 def test_classification_uses_structured_body_path_for_timeline_frontmatter() -> None:
     _assert_classification(
         user_content="整理成 timeline artifact",
@@ -121,4 +129,22 @@ def test_classification_does_not_treat_generic_candidate_heading_as_root_cause_c
         user_content="给个普通候选项列表",
         final_content="# Candidate\nOption: retry deploy\nStatus: pending",
         expected_kind="generic_reply",
+    )
+
+
+def test_timeline_artifact_is_not_a_troubleshooting_rewrite_candidate() -> None:
+    assert (
+        workflow_result_policy.is_troubleshooting_result_candidate(
+            "# Timeline\n- 10:00 服务启动\n- 10:05 开始报错\n- 10:08 恢复"
+        )
+        is False
+    )
+
+
+def test_root_cause_candidate_artifact_is_not_a_troubleshooting_rewrite_candidate() -> None:
+    assert (
+        workflow_result_policy.is_troubleshooting_result_candidate(
+            "# Root Cause Candidate\nCandidate: 数据库连接池耗尽\nConfidence: medium\nEvidence: timeout burst"
+        )
+        is False
     )

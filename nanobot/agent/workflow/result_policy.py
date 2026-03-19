@@ -58,9 +58,22 @@ def looks_like_structured_artifact_body(content: str) -> bool:
         return False
     if text.startswith("---\n") and "\n---" in text:
         return True
-    if re.search(r"(?im)^#{1,6}\s+(inspection|report|case)\b", text):
+    if re.search(r"(?im)^#{1,6}\s+(inspection|report|case|timeline|root cause candidate)\b", text):
+        return True
+    if has_frontmatter_kind_marker(
+        text,
+        "inspection",
+        "report",
+        "case",
+        "timeline",
+        "event_timeline",
+        "root_cause_candidate",
+        "root cause candidate",
+    ):
         return True
     if re.search(r"(?m)^\s*-\s+\[[^\]]+\]\s+\S", text):
+        return True
+    if looks_like_timeline_artifact(text) or looks_like_root_cause_candidate(text):
         return True
     if re.search(r"(?m)^\s*[A-Za-z][\w \-]{1,40}:\s+\S+", text) and "\n" in text:
         return True
@@ -125,7 +138,8 @@ def looks_like_timeline_artifact(content: str) -> bool:
         return True
     if has_frontmatter_kind_marker(text, "timeline", "event_timeline"):
         return True
-    return re.search(r"(?m)^\s*-\s+\d{1,2}:\d{2}\s+\S", text) is not None
+    key_names = extract_top_level_key_names(text)
+    return bool({"event", "timestamp"} <= key_names or {"time", "event"} <= key_names)
 
 
 def looks_like_root_cause_candidate(content: str) -> bool:
