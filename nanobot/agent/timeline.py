@@ -19,10 +19,31 @@ _NEAR_EVENT_SECONDS = 5
 
 
 @dataclass(frozen=True)
+class TimelineArtifactEvent:
+    timestamp_normalized: str
+    timestamp_raw: str
+    event: str
+    evidence: str
+    target: str | None = None
+    source: str | None = None
+
+
+@dataclass(frozen=True)
+class TimelineArtifact:
+    events: list[TimelineArtifactEvent]
+    incident: str | None = None
+    target: str | None = None
+    window_start: str | None = None
+    window_end: str | None = None
+    coverage_note: str | None = None
+
+
+@dataclass(frozen=True)
 class LogTimelineEvent:
     target_id: str
     tool_name: str
     event_time: datetime | None
+    timestamp_raw: str | None
     observed_at: datetime
     raw_line: str
     normalized_message: str
@@ -43,12 +64,14 @@ def extract_log_events(
         if not line or _is_header_line(line):
             continue
         event_time = _parse_timestamp(line)
+        timestamp_raw = _extract_timestamp_text(line)
         normalized = _normalize_message(line)
         events.append(
             LogTimelineEvent(
                 target_id=target_id,
                 tool_name=tool_name,
                 event_time=event_time,
+                timestamp_raw=timestamp_raw,
                 observed_at=observed_at,
                 raw_line=line,
                 normalized_message=normalized,
@@ -89,6 +112,77 @@ def build_log_timeline(events: list[LogTimelineEvent]) -> str:
     return "\n".join(sections)
 
 
+def build_timeline_artifact_from_log_events(
+    events: list[LogTimelineEvent],
+    *,
+    incident: str | None = None,
+    target: str | None = None,
+    window_start: str | None = None,
+    window_end: str | None = None,
+    coverage_note: str | None = None,
+) -> TimelineArtifact:
+    """Build a stable timeline artifact from parsed log timeline events."""
+    parsed = sorted(
+        [event for event in events if event.time_status == "parsed" and event.event_time is not None],
+        key=lambda event: (event.event_time, event.target_id, event.raw_line),
+    )
+    artifact_events = [
+        TimelineArtifactEvent(
+            timestamp_normalized=event.event_time.isoformat(),
+            timestamp_raw=event.timestamp_raw or event.event_time.isoformat(sep=" "),
+            event=event.normalized_message,
+            evidence=event.raw_line,
+            target=event.target_id,
+            source=event.tool_name,
+        )
+        for event in parsed
+    ]
+    return TimelineArtifact(
+        events=artifact_events,
+        incident=incident,
+        target=target,
+        window_start=window_start,
+        window_end=window_end,
+        coverage_note=coverage_note,
+    )
+
+
+def format_timeline_artifact(artifact: TimelineArtifact) -> str:
+    """Render a stable incident timeline artifact as Markdown."""
+    lines: list[str] = ["# Timeline"]
+    if artifact.incident:
+        lines.append("")
+        lines.append(f"Incident: {artifact.incident}")
+    if artifact.target:
+        lines.append(f"Target: {artifact.target}")
+    if artifact.window_start and artifact.window_end:
+        lines.append(f"Window: {artifact.window_start} to {artifact.window_end}")
+    elif artifact.window_start:
+        lines.append(f"Window start: {artifact.window_start}")
+    elif artifact.window_end:
+        lines.append(f"Window end: {artifact.window_end}")
+
+    lines.append("")
+    lines.append("## Events")
+    for event in artifact.events:
+        lines.append("")
+        lines.append(f"- Timestamp: {event.timestamp_normalized}")
+        lines.append(f"  Event: {event.event}")
+        lines.append(f"  Evidence: {event.evidence}")
+        if event.target:
+            lines.append(f"  Target: {event.target}")
+        if event.source:
+            lines.append(f"  Source: {event.source}")
+
+    if artifact.coverage_note:
+        lines.append("")
+        lines.append("## Coverage Note")
+        lines.append("")
+        lines.append(artifact.coverage_note)
+
+    return "\n".join(lines).rstrip()
+
+
 def _parse_timestamp(line: str) -> datetime | None:
     for pattern in _TIMESTAMP_PATTERNS:
         match = pattern.search(line)
@@ -100,6 +194,14 @@ def _parse_timestamp(line: str) -> datetime | None:
                 return datetime.strptime(ts, fmt)
             except ValueError:
                 continue
+    return None
+
+
+def _extract_timestamp_text(line: str) -> str | None:
+    for pattern in _TIMESTAMP_PATTERNS:
+        match = pattern.search(line)
+        if match:
+            return match.group("ts")
     return None
 
 
