@@ -111,6 +111,8 @@ def build_log_timeline(events: list[LogTimelineEvent]) -> str:
 
 def format_timeline_artifact(artifact: TimelineArtifact) -> str:
     """Render a stable incident timeline artifact as Markdown."""
+    if not artifact.events:
+        raise ValueError("timeline artifacts must contain at least one event")
     lines: list[str] = ["# Timeline"]
     if artifact.incident:
         lines.append("")

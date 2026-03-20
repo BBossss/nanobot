@@ -258,6 +258,74 @@ def test_format_timeline_artifact_supports_target_only_and_source_only_event_fie
     assert markdown.count("Source:") == 1
 
 
+def test_format_timeline_artifact_raises_on_empty_events() -> None:
+    artifact = TimelineArtifact(
+        incident="storage timeout incident",
+        target="node-a",
+        window_start=None,
+        window_end=None,
+        coverage_note=None,
+        events=[],
+    )
+
+    try:
+        format_timeline_artifact(artifact)
+    except ValueError as exc:
+        assert "at least one event" in str(exc)
+    else:
+        raise AssertionError("expected format_timeline_artifact to reject empty events")
+
+
+def test_format_timeline_artifact_renders_window_start_only() -> None:
+    artifact = TimelineArtifact(
+        incident="storage timeout incident",
+        target="node-a",
+        window_start="2026-03-18T10:21:03",
+        window_end=None,
+        coverage_note=None,
+        events=[
+            TimelineArtifactEvent(
+                timestamp_normalized="2026-03-18T10:21:03",
+                timestamp_raw="2026-03-18 10:21:03",
+                event="service started",
+                evidence="2026-03-18 10:21:03 service started",
+                target="node-a",
+                source="read_log_tail",
+            )
+        ],
+    )
+
+    markdown = format_timeline_artifact(artifact)
+
+    assert "Window start: 2026-03-18T10:21:03" in markdown
+    assert "Window:" not in markdown
+
+
+def test_format_timeline_artifact_renders_window_end_only() -> None:
+    artifact = TimelineArtifact(
+        incident="storage timeout incident",
+        target="node-a",
+        window_start=None,
+        window_end="2026-03-18T10:28:41",
+        coverage_note=None,
+        events=[
+            TimelineArtifactEvent(
+                timestamp_normalized="2026-03-18T10:21:03",
+                timestamp_raw="2026-03-18 10:21:03",
+                event="service started",
+                evidence="2026-03-18 10:21:03 service started",
+                target="node-a",
+                source="read_log_tail",
+            )
+        ],
+    )
+
+    markdown = format_timeline_artifact(artifact)
+
+    assert "Window end: 2026-03-18T10:28:41" in markdown
+    assert "Window:" not in markdown
+
+
 def test_format_timeline_artifact_renders_coverage_note_layout_after_single_event() -> None:
     artifact = TimelineArtifact(
         incident="storage timeout incident",
