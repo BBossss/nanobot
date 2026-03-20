@@ -71,7 +71,7 @@ Expected flow:
 1. log-oriented multi-target troubleshooting runs through the existing aggregation path
 2. `MultiTargetAggregation` can already build a cross-target `timeline_artifact`
 3. a new helper derives a short natural-language summary from that artifact
-4. `AgentLoop` carries the current-turn structured multi-target result forward to final result shaping
+4. `AgentLoop` carries the current-turn derived timeline summary forward to final result shaping
 5. `result_policy.shape_evidence_first_result(...)` inserts the summary into the evidence section when the final output is still a troubleshooting reply
 
 ## Architecture Boundaries
@@ -101,7 +101,16 @@ It should not duplicate timeline grouping logic outside the artifact builder.
 
 `AgentLoop` should remain a coordinator, not a chronology engine.
 
-It may store the current-turn multi-target aggregation or derived timeline summary in a bounded way so the final result shaping path can consume it. The loop should not compute shared / near-shared / local logic itself.
+It should pass only a derived timeline summary string, not a full aggregation object, into the final result shaping path.
+
+Recommended bounded contract:
+
+- when the current turn executes a supported multi-target log tool, `AgentLoop` obtains `build_cross_target_timeline_summary(...)`
+- `AgentLoop` passes that summary into result shaping as an explicit optional argument such as `timeline_summary`
+- no session persistence is required in this phase
+- no raw aggregation object should be stored in session metadata for this feature
+
+The loop should not compute shared / near-shared / local logic itself.
 
 ### Result Policy Layer
 
@@ -126,7 +135,7 @@ The summary should stay short and operator-facing.
 Default content should include:
 
 - earliest timestamp
-- earliest target
+- earliest contributing target or target set
 - whether the first cluster was `shared` or `near_shared`
 - later local-only event if present
 
@@ -157,6 +166,8 @@ Example patterns:
 
 The exact wording can remain conservative in v1 as long as it is stable enough for tests.
 
+When the first cluster is `shared`, the summary should name the full earliest target set rather than forcing a single earliest target.
+
 ## Insertion Rules
 
 The timeline summary should be inserted only when all of the following are true:
@@ -179,9 +190,11 @@ The timeline summary should not be inserted when:
 
 This phase should remain conservative about duplication.
 
-If the final troubleshooting reply already appears to contain a highly similar explicit timeline statement, the system should avoid adding another `时间线补充：...` line.
+Stable v1 rule:
 
-The first version does not need deep semantic deduplication. A bounded string-level guard is acceptable if it is stable and easy to reason about.
+- if the final troubleshooting reply already contains the exact marker `时间线补充：`, do not insert another timeline summary
+
+This phase does not require semantic deduplication beyond that marker check.
 
 ## Failure Handling
 
