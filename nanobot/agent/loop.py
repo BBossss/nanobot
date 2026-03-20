@@ -419,6 +419,7 @@ class AgentLoop:
         initial_messages: list[dict],
         on_progress: Callable[..., Awaitable[None]] | None = None,
         session: Session | None = None,
+        on_timeline_summary: Callable[[str | None], Awaitable[None]] | None = None,
     ) -> tuple[str | None, list[str], list[dict]]:
         """Run the agent iteration loop. Returns (final_content, tools_used, messages)."""
         messages = initial_messages
@@ -504,6 +505,7 @@ class AgentLoop:
                             session=session,
                             on_progress=on_progress,
                             investigation=investigation,
+                            on_timeline_summary=on_timeline_summary,
                         )
                         tool_result_cache[signature] = result
                         if object_signature:
@@ -779,8 +781,18 @@ class AgentLoop:
             if scope_hint:
                 await progress_cb(scope_hint)
 
+        timeline_summary: str | None = None
+
+        async def _capture_timeline_summary(summary: str | None) -> None:
+            nonlocal timeline_summary
+            if summary:
+                timeline_summary = summary
+
         final_content, _, all_msgs = await self._run_agent_loop(
-            initial_messages, on_progress=progress_cb, session=session,
+            initial_messages,
+            on_progress=progress_cb,
+            session=session,
+            on_timeline_summary=_capture_timeline_summary,
         )
 
         if final_content is None:
@@ -791,6 +803,7 @@ class AgentLoop:
             user_content=msg.content,
             final_content=final_content,
             messages=all_msgs,
+            timeline_summary=timeline_summary,
         )
 
         self._save_turn(session, all_msgs, 1 + len(history))
@@ -914,6 +927,7 @@ class AgentLoop:
         arguments: dict[str, Any],
         *,
         session: Session | None = None,
+        on_timeline_summary: Callable[[str | None], Awaitable[None]] | None = None,
     ) -> str:
         """Execute a tool call, expanding to multiple targets when confirmed."""
         if (
@@ -928,6 +942,7 @@ class AgentLoop:
                     arguments=arguments,
                     resolved_targets=resolved_targets,
                     execute_tool=self.tools.execute,
+                    on_summary=on_timeline_summary,
                 )
         return await self.tools.execute(name, arguments)
 
@@ -939,6 +954,7 @@ class AgentLoop:
         session: Session | None = None,
         on_progress: Callable[..., Awaitable[None]] | None,
         investigation: InvestigationState,
+        on_timeline_summary: Callable[[str | None], Awaitable[None]] | None = None,
     ) -> str:
         """Execute a tool call while emitting bounded feedback."""
         bucket = self._tool_feedback_bucket(name)
@@ -968,6 +984,7 @@ class AgentLoop:
             session=session,
             on_progress=on_progress,
             multi_target_total=multi_target_total,
+            on_timeline_summary=on_timeline_summary,
         )
         if bucket and bucket not in investigation.visited_buckets:
             investigation.visited_buckets.append(bucket)
@@ -982,6 +999,7 @@ class AgentLoop:
         session: Session | None,
         on_progress: Callable[..., Awaitable[None]] | None,
         multi_target_total: int,
+        on_timeline_summary: Callable[[str | None], Awaitable[None]] | None = None,
     ) -> str:
         """Execute a tool call and emit long-wait heartbeats while awaiting completion."""
         async def _on_target_progress(completed: int, total: int, _target_id: str) -> None:
@@ -1002,6 +1020,7 @@ class AgentLoop:
                         resolved_targets=resolved_targets,
                         execute_tool=self.tools.execute,
                         on_target_progress=_on_target_progress if on_progress and len(resolved_targets) > 1 else None,
+                        on_summary=on_timeline_summary,
                     )
             return await self.tools.execute(name, arguments)
 
@@ -1166,6 +1185,7 @@ class AgentLoop:
         user_content: str,
         final_content: str | None,
         messages: list[dict[str, Any]] | None = None,
+        timeline_summary: str | None = None,
     ) -> str | None:
         """Boundedly reshape troubleshooting conclusions when evidence-first mode is active."""
         return workflow_result_policy.shape_evidence_first_result(
@@ -1173,4 +1193,5 @@ class AgentLoop:
             user_content=user_content,
             final_content=final_content,
             messages=messages,
+            timeline_summary=timeline_summary,
         )

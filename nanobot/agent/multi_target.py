@@ -171,6 +171,7 @@ async def execute_multi_target_tool(
     resolved_targets: list[dict[str, Any]],
     execute_tool: Callable[[str, dict[str, Any]], Awaitable[str]],
     on_target_progress: Callable[[int, int, str], Awaitable[None]] | None = None,
+    on_summary: Callable[[str | None], Awaitable[None]] | None = None,
 ) -> str:
     """Execute one supported troubleshooting tool across multiple targets."""
     collected: list[dict[str, Any]] = []
@@ -193,6 +194,8 @@ async def execute_multi_target_tool(
         if on_target_progress:
             await on_target_progress(index, total, target["id"])
     summary = aggregate_multi_target_results(tool_name=tool_name, results=collected)
+    if on_summary:
+        await on_summary(summary.build_cross_target_timeline_summary())
     rendered = [
         f"[multi-target][{item['target_id']} -> {item['target_host']}]\n"
         f"{item['error'] or item['content']}"
