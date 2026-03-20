@@ -318,6 +318,123 @@ def test_timeline_summary_from_read_log_tail_near_shared_first_cluster() -> None
     )
 
 
+def test_timeline_summary_uses_first_cross_target_cluster_when_local_event_appears_earlier() -> None:
+    aggregation = aggregate_multi_target_results(
+        tool_name="search_log",
+        results=[
+            {
+                "target_id": "node-c",
+                "target_host": "root@10.0.0.3",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.3] Found matches in /sf/log/app.log:\n"
+                    "2026-03-20 10:20:01 cache warmup completed"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 20, 10),
+            },
+            {
+                "target_id": "node-a",
+                "target_host": "root@10.0.0.1",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.1] Found matches in /sf/log/app.log:\n"
+                    "2026-03-20 10:21:03 timeout while connecting to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+            {
+                "target_id": "node-b",
+                "target_host": "root@10.0.0.2",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.2] Found matches in /sf/log/app.log:\n"
+                    "2026-03-20 10:21:03 timeout while connecting to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+        ],
+    )
+
+    summary = aggregation.build_cross_target_timeline_summary()
+
+    assert summary == (
+        "时间线补充：最早在 10:21:03 由 node-a,node-b 出现同类超时。"
+    )
+
+
+def test_timeline_summary_uses_later_local_event_after_first_cross_target_cluster() -> None:
+    aggregation = aggregate_multi_target_results(
+        tool_name="read_log_tail",
+        results=[
+            {
+                "target_id": "node-c",
+                "target_host": "root@10.0.0.3",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.3] tail 1 lines from /sf/log/app.log:\n"
+                    "2026-03-20 10:20:01 cache warmup completed"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 20, 10),
+            },
+            {
+                "target_id": "node-a",
+                "target_host": "root@10.0.0.1",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.1] tail 1 lines from /sf/log/app.log:\n"
+                    "2026-03-20 10:21:03 timeout while connecting to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+            {
+                "target_id": "node-b",
+                "target_host": "root@10.0.0.2",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.2] tail 1 lines from /sf/log/app.log:\n"
+                    "2026-03-20 10:21:04 timeout while connecting to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+            {
+                "target_id": "node-d",
+                "target_host": "root@10.0.0.4",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.4] tail 1 lines from /sf/log/app.log:\n"
+                    "2026-03-20 10:23:11 permission denied writing to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 23, 30),
+            },
+            {
+                "target_id": "node-e",
+                "target_host": "root@10.0.0.5",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.5] tail 1 lines from /sf/log/app.log:\n"
+                    "2026-03-20 10:24:12 connection refused by backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 24, 30),
+            },
+        ],
+    )
+
+    summary = aggregation.build_cross_target_timeline_summary()
+
+    assert summary == (
+        "时间线补充：最早在 10:21:03 由 node-a 出现超时，"
+        "node-b 随后近同时出现同类异常；10:23:11 起 node-d 出现本地 permission denied。"
+    )
+
+
 def test_timeline_summary_returns_none_when_no_timestamped_log_events_exist() -> None:
     aggregation = aggregate_multi_target_results(
         tool_name="search_log",

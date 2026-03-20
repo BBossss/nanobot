@@ -120,9 +120,10 @@ class MultiTargetAggregation:
         if artifact is None or not artifact.events:
             return None
 
-        first_event = artifact.events[0]
-        if first_event.scope not in {"shared", "near_shared"}:
+        first_event_index = _find_first_cross_target_timeline_event_index(artifact.events)
+        if first_event_index is None:
             return None
+        first_event = artifact.events[first_event_index]
 
         first_targets = _split_timeline_targets(first_event.target)
         if len(first_targets) < 2:
@@ -143,7 +144,7 @@ class MultiTargetAggregation:
                 f"随后近同时出现同类异常"
             )
 
-        later_local_event = _find_first_later_local_event(artifact.events[1:])
+        later_local_event = _find_first_later_local_event(artifact.events[first_event_index + 1 :])
         if later_local_event is None:
             return summary + "。"
 
@@ -380,6 +381,14 @@ def _split_timeline_targets(target: str | None) -> list[str]:
     if not target:
         return []
     return [item.strip() for item in target.split(",") if item.strip()]
+
+
+def _find_first_cross_target_timeline_event_index(events: list[Any]) -> int | None:
+    for index, event in enumerate(events):
+        if getattr(event, "scope", None) in {"shared", "near_shared"}:
+            if len(_split_timeline_targets(getattr(event, "target", None))) >= 2:
+                return index
+    return None
 
 
 def _find_first_later_local_event(
