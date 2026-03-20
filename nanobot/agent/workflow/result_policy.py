@@ -230,6 +230,39 @@ def classify_output_kind(
     return OUTPUT_KIND_GENERIC_REPLY
 
 
+def _classify_output_kind_from_content_only(content: str | None) -> str:
+    """Classify output using only the visible content as a conservative fallback."""
+    text = (content or "").strip()
+    if not text:
+        return OUTPUT_KIND_GENERIC_REPLY
+    if looks_like_timeline_artifact(text):
+        return OUTPUT_KIND_TIMELINE_ARTIFACT
+    if looks_like_root_cause_candidate(text):
+        return OUTPUT_KIND_ROOT_CAUSE_CANDIDATE
+    if looks_like_named_artifact(text, "inspection"):
+        return OUTPUT_KIND_INSPECTION_ARTIFACT
+    if looks_like_named_artifact(text, "report", "inspection report"):
+        return OUTPUT_KIND_REPORT_ARTIFACT
+    if looks_like_named_artifact(text, "case"):
+        return OUTPUT_KIND_CASE_ARTIFACT
+    if workflow_control.looks_like_troubleshooting_content(text) or any(
+        phrase in text for phrase in ("当前倾向", "根因已确认", "问题已经定位到", "可以确定就是")
+    ):
+        return OUTPUT_KIND_TROUBLESHOOTING_REPLY
+    if looks_like_generic_structured_body(text):
+        if has_frontmatter_kind_marker(text, "inspection"):
+            return OUTPUT_KIND_INSPECTION_ARTIFACT
+        if has_frontmatter_kind_marker(text, "report", "inspection_report"):
+            return OUTPUT_KIND_REPORT_ARTIFACT
+        if has_frontmatter_kind_marker(text, "case"):
+            return OUTPUT_KIND_CASE_ARTIFACT
+        if has_frontmatter_kind_marker(text, "timeline", "event_timeline"):
+            return OUTPUT_KIND_TIMELINE_ARTIFACT
+        if has_frontmatter_kind_marker(text, "root_cause_candidate", "root cause candidate"):
+            return OUTPUT_KIND_ROOT_CAUSE_CANDIDATE
+    return OUTPUT_KIND_GENERIC_REPLY
+
+
 def split_troubleshooting_evidence_and_conclusion(content: str) -> tuple[str, str | None, str]:
     """Split a reply into evidence text, a downgraded tendency phrase, and trailing content."""
     patterns: tuple[tuple[re.Pattern[str], str], ...] = (
@@ -316,15 +349,27 @@ def ensure_minimal_uncertainty_and_next_step(content: str) -> str:
     return "\n".join(lines)
 
 
-def is_troubleshooting_result_candidate(content: str) -> bool:
+def is_output_kind_rewrite_eligible(kind: str) -> bool:
+    """Return whether an output kind can enter evidence-first rewrite shaping."""
+    return kind == OUTPUT_KIND_TROUBLESHOOTING_REPLY
+
+
+def is_troubleshooting_result_candidate(
+    content: str,
+    user_content: str | None = None,
+    messages: list[dict[str, Any]] | None = None,
+) -> bool:
     """Return whether a troubleshooting reply should be reshaped in evidence-first mode."""
-    if not content.strip():
-        return False
-    if looks_like_structured_artifact_body(content):
-        return False
-    return workflow_control.looks_like_troubleshooting_content(content) or any(
-        phrase in content for phrase in ("当前倾向", "根因已确认", "问题已经定位到", "可以确定就是")
-    )
+    del messages  # Reserved for future evidence-aware fallback refinements.
+    if user_content is not None:
+        kind = classify_output_kind(
+            user_content=user_content,
+            final_content=content,
+            messages=None,
+        )
+    else:
+        kind = _classify_output_kind_from_content_only(content)
+    return is_output_kind_rewrite_eligible(kind)
 
 
 def shape_evidence_first_result(
@@ -344,9 +389,7 @@ def shape_evidence_first_result(
         final_content=final_content,
         messages=messages,
     )
-    if kind != OUTPUT_KIND_TROUBLESHOOTING_REPLY:
-        return final_content
-    if not is_troubleshooting_result_candidate(final_content):
+    if not is_output_kind_rewrite_eligible(kind):
         return final_content
 
     evidence_text, tendency_text, suffix_text = split_troubleshooting_evidence_and_conclusion(final_content)

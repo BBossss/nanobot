@@ -258,6 +258,100 @@ def test_evidence_first_still_rewrites_frontmatter_wrapped_troubleshooting_reply
     assert "不确定点" in shaped
 
 
+@pytest.mark.parametrize(
+    ("user_content", "final_content"),
+    [
+        (
+            "帮我判断这个服务为什么报错",
+            "已确认事实：日志里连续出现连接超时。当前倾向：数据库连接池耗尽。",
+        ),
+        (
+            "把这轮检查整理成 inspection",
+            "# Inspection\n- [target] node-a\n- [summary] nginx active",
+        ),
+        (
+            "输出 report artifact",
+            "# Report\nSummary: service unhealthy\nEvidence: timeout seen in logs",
+        ),
+        (
+            "导出这个事件的 case artifact",
+            "# Case\nCase ID: CASE-001\nStatus: open",
+        ),
+        (
+            "整理一下这次故障时间线",
+            "# Timeline\n- 10:00 服务启动\n- 10:05 开始报错\n- 10:08 恢复",
+        ),
+        (
+            "给我一个 root cause candidate",
+            "# Root Cause Candidate\nCandidate: 数据库连接池耗尽\nConfidence: medium",
+        ),
+        (
+            "今天天气怎么样",
+            "我现在只能帮你处理排障相关的事情。",
+        ),
+    ],
+)
+def test_candidate_eligibility_matches_output_kind_when_user_content_is_present(
+    user_content: str,
+    final_content: str,
+) -> None:
+    classified_kind = workflow_result_policy.classify_output_kind(
+        user_content=user_content,
+        final_content=final_content,
+        messages=None,
+    )
+    expected = classified_kind == "troubleshooting_reply"
+
+    assert (
+        workflow_result_policy.is_troubleshooting_result_candidate(
+            final_content,
+            user_content=user_content,
+            messages=None,
+        )
+        is expected
+    )
+
+
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        (
+            "已确认事实：日志里连续出现连接超时。当前倾向：数据库连接池耗尽。",
+            True,
+        ),
+        (
+            "# Inspection\n- [target] node-a\n- [summary] nginx active",
+            False,
+        ),
+        (
+            "# Report\nSummary: service unhealthy\nEvidence: timeout seen in logs",
+            False,
+        ),
+        (
+            "# Case\nCase ID: CASE-001\nStatus: open",
+            False,
+        ),
+        (
+            "# Timeline\n- 10:00 服务启动\n- 10:05 开始报错\n- 10:08 恢复",
+            False,
+        ),
+        (
+            "# Root Cause Candidate\nCandidate: 数据库连接池耗尽\nConfidence: medium",
+            False,
+        ),
+        (
+            "我现在只能帮你处理排障相关的事情。",
+            False,
+        ),
+    ],
+)
+def test_candidate_eligibility_fallback_without_user_content_is_conservative(
+    content: str,
+    expected: bool,
+) -> None:
+    assert workflow_result_policy.is_troubleshooting_result_candidate(content) is expected
+
+
 def test_shape_evidence_first_result_dispatches_troubleshooting_reply_through_evidence_first_logic(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -295,6 +389,14 @@ def test_shape_evidence_first_result_dispatches_troubleshooting_reply_through_ev
         ),
         (
             workflow_result_policy.OUTPUT_KIND_CASE_ARTIFACT,
+            "已确认事实：日志里持续报错。根因已确认，就是日志轮转失败。",
+        ),
+        (
+            workflow_result_policy.OUTPUT_KIND_TIMELINE_ARTIFACT,
+            "已确认事实：日志里持续报错。根因已确认，就是日志轮转失败。",
+        ),
+        (
+            workflow_result_policy.OUTPUT_KIND_ROOT_CAUSE_CANDIDATE,
             "已确认事实：日志里持续报错。根因已确认，就是日志轮转失败。",
         ),
         (
