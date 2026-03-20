@@ -109,41 +109,6 @@ def build_log_timeline(events: list[LogTimelineEvent]) -> str:
     return "\n".join(sections)
 
 
-def build_timeline_artifact_from_log_events(
-    events: list[LogTimelineEvent],
-    *,
-    incident: str | None = None,
-    target: str | None = None,
-    window_start: str | None = None,
-    window_end: str | None = None,
-    coverage_note: str | None = None,
-) -> TimelineArtifact:
-    """Build a stable timeline artifact from parsed log timeline events."""
-    parsed = sorted(
-        [event for event in events if event.time_status == "parsed" and event.event_time is not None],
-        key=lambda event: (event.event_time, event.target_id, event.raw_line),
-    )
-    artifact_events = [
-        TimelineArtifactEvent(
-            timestamp_normalized=event.event_time.isoformat(),
-            timestamp_raw=_extract_timestamp_text(event.raw_line) or event.event_time.isoformat(sep=" "),
-            event=event.normalized_message,
-            evidence=event.raw_line,
-            target=event.target_id,
-            source=event.tool_name,
-        )
-        for event in parsed
-    ]
-    return TimelineArtifact(
-        events=artifact_events,
-        incident=incident,
-        target=target,
-        window_start=window_start,
-        window_end=window_end,
-        coverage_note=coverage_note,
-    )
-
-
 def format_timeline_artifact(artifact: TimelineArtifact) -> str:
     """Render a stable incident timeline artifact as Markdown."""
     lines: list[str] = ["# Timeline"]
@@ -191,14 +156,6 @@ def _parse_timestamp(line: str) -> datetime | None:
                 return datetime.strptime(ts, fmt)
             except ValueError:
                 continue
-    return None
-
-
-def _extract_timestamp_text(line: str) -> str | None:
-    for pattern in _TIMESTAMP_PATTERNS:
-        match = pattern.search(line)
-        if match:
-            return match.group("ts")
     return None
 
 
