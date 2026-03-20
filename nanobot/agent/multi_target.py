@@ -209,10 +209,15 @@ def _render_multi_target_summary(
     aggregation: MultiTargetAggregation,
     timeline_events: list[Any],
 ) -> str:
-    lines = [f"## Multi-Target Summary: {aggregation.tool_name}"]
+    failed_count = len(aggregation.failed_targets)
+    ok_count = len(aggregation.ok_targets)
+    lines = [
+        f"## Multi-Target Summary: {aggregation.tool_name}",
+        f"Targets: {aggregation.targets_total} total, {ok_count} ok, {failed_count} failed",
+    ]
     if aggregation.shared_findings or aggregation.local_findings:
         if aggregation.shared_findings:
-            lines.append("### Common Findings")
+            lines.append("### Shared Findings")
             for finding in aggregation.shared_findings:
                 lines.append(f"- {', '.join(finding.target_ids)}: {finding.signature}")
         if aggregation.local_findings:
@@ -270,6 +275,11 @@ def _is_log_header_line(line: str) -> bool:
 
 
 def _build_candidate_root_cause_summary(lines: list[str]) -> str:
+    if not any(
+        marker in "\n".join(lines)
+        for marker in ("### Shared Findings", "### Failed Targets", "## Timeline")
+    ):
+        return ""
     summary_text = "\n".join(lines)
     extracted = extract_candidate_signals(summary_text)
     candidates = map_root_cause_candidates(extracted)

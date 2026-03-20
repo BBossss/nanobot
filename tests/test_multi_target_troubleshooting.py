@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from nanobot.agent.loop import AgentLoop
-from nanobot.agent.multi_target import aggregate_multi_target_results
+from nanobot.agent.multi_target import aggregate_multi_target_results, execute_multi_target_tool
 from nanobot.bus.queue import MessageBus
 from nanobot.config.schema import ExecToolConfig
 from nanobot.providers.base import LLMResponse, ToolCallRequest
@@ -118,11 +118,143 @@ def test_aggregate_multi_target_results_groups_common_local_and_failures() -> No
         ],
     )
 
-    assert "Common Findings" in summary
+    assert "Shared Findings" in summary
     assert "node-a, node-b" in summary
     assert "active" in summary
     assert "Failed Targets" in summary
     assert "node-c: timeout" in summary
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "results"),
+    [
+        (
+            "search_log",
+            [
+                {
+                    "target_id": "node-a",
+                    "target_host": "root@10.0.0.1",
+                    "status": "ok",
+                    "content": (
+                        "[target=root@10.0.0.1] Found matches in /sf/log/app.log:\n"
+                        "12: 2026-03-18 10:21:03 timeout while connecting to storage backend"
+                    ),
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+                {
+                    "target_id": "node-b",
+                    "target_host": "root@10.0.0.2",
+                    "status": "ok",
+                    "content": (
+                        "[target=root@10.0.0.2] Found matches in /sf/log/app.log:\n"
+                        "18: 2026-03-18 10:21:05 timeout while connecting to storage backend"
+                    ),
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+                {
+                    "target_id": "node-c",
+                    "target_host": "root@10.0.0.3",
+                    "status": "error",
+                    "content": "",
+                    "error": "ssh timeout",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+            ],
+        ),
+        (
+            "service_status",
+            [
+                {
+                    "target_id": "node-a",
+                    "target_host": "root@10.0.0.1",
+                    "status": "ok",
+                    "content": "[target=root@10.0.0.1] service_status(nginx)\nactive (running)",
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+                {
+                    "target_id": "node-b",
+                    "target_host": "root@10.0.0.2",
+                    "status": "ok",
+                    "content": "[target=root@10.0.0.2] service_status(nginx)\ninactive (dead)",
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+            ],
+        ),
+    ],
+)
+def test_aggregate_multi_target_results_renders_stable_summary_for_log_and_state_tools(
+    tool_name: str,
+    results: list[dict[str, object]],
+) -> None:
+    summary = str(aggregate_multi_target_results(tool_name=tool_name, results=results))
+
+    assert summary.startswith(f"## Multi-Target Summary: {tool_name}")
+    assert "Targets:" in summary
+    if tool_name == "search_log":
+        assert "### Shared Findings" in summary
+        assert "### Failed Targets" in summary
+    else:
+        assert "### Local Findings" in summary
+    assert "## Per-Target Results" not in summary
+
+
+def test_aggregate_multi_target_results_omits_empty_sections_when_all_targets_share_one_state() -> None:
+    summary = str(
+        aggregate_multi_target_results(
+            tool_name="service_status",
+            results=[
+                {
+                    "target_id": "node-a",
+                    "target_host": "root@10.0.0.1",
+                    "status": "ok",
+                    "content": "[target=root@10.0.0.1] service_status(nginx)\nactive (running)",
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+                {
+                    "target_id": "node-b",
+                    "target_host": "root@10.0.0.2",
+                    "status": "ok",
+                    "content": "[target=root@10.0.0.2] service_status(nginx)\nactive (running)",
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+            ],
+        )
+    )
+
+    assert "### Shared Findings" in summary
+    assert "### Local Findings" not in summary
+    assert "### Failed Targets" not in summary
+
+
+@pytest.mark.asyncio
+async def test_execute_multi_target_tool_keeps_grouped_summary_and_raw_per_target_results() -> None:
+    async def _exec(name: str, params: dict[str, object]) -> str:
+        return (
+            f"[target={params['target']}] {name}(nginx)\n"
+            f"{'active (running)' if params['target'] == 'root@10.0.0.1' else 'inactive (dead)'}"
+        )
+
+    rendered = await execute_multi_target_tool(
+        tool_name="service_status",
+        arguments={"service": "nginx"},
+        resolved_targets=[
+            {"id": "node-a", "target": "root@10.0.0.1"},
+            {"id": "node-b", "target": "root@10.0.0.2"},
+        ],
+        execute_tool=_exec,
+    )
+
+    assert rendered.startswith("## Multi-Target Summary: service_status")
+    assert "Targets:" in rendered
+    assert "## Per-Target Results" in rendered
+    assert "[multi-target][node-a -> root@10.0.0.1]" in rendered
+    assert "[multi-target][node-b -> root@10.0.0.2]" in rendered
 
 
 @pytest.mark.parametrize(
@@ -435,7 +567,7 @@ def test_aggregate_multi_target_results_groups_search_log_matches_as_common_desp
         ],
     )
 
-    assert "Common Findings" in summary
+    assert "Shared Findings" in summary
     assert "node-a, node-b" in summary
 
 
@@ -479,7 +611,7 @@ def test_aggregate_multi_target_results_keeps_non_log_tools_without_timeline() -
     )
 
     assert "Timeline" not in summary
-    assert "Common Findings" in summary
+    assert "Shared Findings" in summary
 
 
 def test_aggregate_multi_target_results_does_not_treat_find_logs_as_timeline_input() -> None:
@@ -579,3 +711,116 @@ def test_aggregate_multi_target_results_candidate_root_cause_uses_raw_log_snippe
 
     assert "Candidate Root Cause" in summary
     assert "dependency unreachable while connecting to storage backend" in summary
+
+
+@pytest.mark.asyncio
+async def test_execute_multi_target_tool_renders_log_formatter_summary_and_per_target_results() -> None:
+    resolved_targets = [
+        {"id": "node-b", "target": "root@10.0.0.2"},
+        {"id": "node-a", "target": "root@10.0.0.1"},
+        {"id": "node-c", "target": "root@10.0.0.3"},
+        {"id": "node-d", "target": "root@10.0.0.4"},
+    ]
+
+    async def _execute(tool_name: str, params: dict[str, str]) -> str:
+        target = params["target"]
+        if target == "root@10.0.0.4":
+            return "Error: ssh timeout"
+        if target == "root@10.0.0.3":
+            return (
+                "[target=root@10.0.0.3] Found matches in /sf/log/app.log:\n"
+                "21: 2026-03-18 10:22:11 permission denied writing to storage backend"
+            )
+        return (
+            f"[target={target}] Found matches in /sf/log/app.log:\n"
+            "18: 2026-03-18 10:21:03 timeout while connecting to storage backend"
+        )
+
+    output = await execute_multi_target_tool(
+        tool_name="search_log",
+        arguments={"query": "storage backend"},
+        resolved_targets=resolved_targets,
+        execute_tool=_execute,
+    )
+
+    assert output.startswith("## Multi-Target Summary: search_log")
+    assert "Targets: 4 total, 3 ok, 1 failed" in output
+    assert "### Shared Findings" in output
+    assert "### Local Findings" in output
+    assert "### Failed Targets" in output
+    assert "## Per-Target Results" in output
+    assert "[multi-target][node-d -> root@10.0.0.4]\nError: ssh timeout" in output
+
+
+def test_aggregate_multi_target_results_renders_state_formatter_summary_without_shared_section_when_all_results_differ(
+    ) -> None:
+    summary = str(
+        aggregate_multi_target_results(
+            tool_name="service_status",
+            results=[
+                {
+                    "target_id": "node-c",
+                    "target_host": "root@10.0.0.3",
+                    "status": "ok",
+                    "content": "[target=root@10.0.0.3] service_status(nginx)\nactive (running)",
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+                {
+                    "target_id": "node-a",
+                    "target_host": "root@10.0.0.1",
+                    "status": "ok",
+                    "content": "[target=root@10.0.0.1] service_status(nginx)\nreloading (start pending)",
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+                {
+                    "target_id": "node-b",
+                    "target_host": "root@10.0.0.2",
+                    "status": "ok",
+                    "content": "[target=root@10.0.0.2] service_status(nginx)\ninactive (dead)",
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+            ],
+        )
+    )
+
+    assert summary.startswith("## Multi-Target Summary: service_status")
+    assert "Targets: 3 total, 3 ok, 0 failed" in summary
+    assert "### Shared Findings" not in summary
+    assert "### Local Findings" in summary
+    assert "### Failed Targets" not in summary
+
+
+def test_aggregate_multi_target_results_renders_state_formatter_summary_without_local_or_failed_sections_when_all_results_match(
+    ) -> None:
+    summary = str(
+        aggregate_multi_target_results(
+            tool_name="process_snapshot",
+            results=[
+                {
+                    "target_id": "node-b",
+                    "target_host": "root@10.0.0.2",
+                    "status": "ok",
+                    "content": "[target=root@10.0.0.2] process_snapshot(nginx)\nactive (running)",
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+                {
+                    "target_id": "node-a",
+                    "target_host": "root@10.0.0.1",
+                    "status": "ok",
+                    "content": "[target=root@10.0.0.1] process_snapshot(nginx)\nactive (running)",
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+            ],
+        )
+    )
+
+    assert summary.startswith("## Multi-Target Summary: process_snapshot")
+    assert "Targets: 2 total, 2 ok, 0 failed" in summary
+    assert "### Shared Findings" in summary
+    assert "### Local Findings" not in summary
+    assert "### Failed Targets" not in summary
