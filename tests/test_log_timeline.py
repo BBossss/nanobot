@@ -2,14 +2,8 @@ from datetime import datetime
 
 import pytest
 
-from nanobot.agent.timeline import (
-    TimelineArtifact,
-    TimelineArtifactEvent,
-    build_cross_target_timeline_artifact,
-    build_log_timeline,
-    extract_log_events,
-    format_timeline_artifact,
-)
+from nanobot.agent import timeline as timeline_module
+from nanobot.agent.timeline import TimelineArtifact, TimelineArtifactEvent, build_log_timeline, extract_log_events, format_timeline_artifact
 
 
 def test_extract_log_events_parses_timestamp() -> None:
@@ -224,7 +218,7 @@ def test_build_cross_target_timeline_artifact_emits_shared_and_local_scoped_even
         )
     )
 
-    artifact = build_cross_target_timeline_artifact(
+    artifact = timeline_module.build_cross_target_timeline_artifact(
         events,
         incident="storage timeout incident",
         target_scope="node-a,node-b,node-c",
@@ -269,7 +263,7 @@ def test_build_cross_target_timeline_artifact_excludes_untimestamped_events_from
         observed_at=observed_at,
     )
 
-    artifact = build_cross_target_timeline_artifact(
+    artifact = timeline_module.build_cross_target_timeline_artifact(
         events,
         incident="storage timeout incident",
         target_scope="node-a",
@@ -316,7 +310,10 @@ def test_build_cross_target_timeline_artifact_uses_stable_order_for_identical_ti
         )
     )
 
-    artifact = build_cross_target_timeline_artifact(events, target_scope="node-a,node-b,node-c")
+    artifact = timeline_module.build_cross_target_timeline_artifact(
+        events,
+        target_scope="node-a,node-b,node-c",
+    )
 
     assert len(artifact.events) == 1
     assert artifact.events[0].target == "node-a,node-b,node-c"
@@ -527,3 +524,143 @@ def test_format_timeline_artifact_renders_coverage_note_layout_after_single_even
     assert "## Coverage Note" in markdown
     assert "Only evidence with explicit timestamps is included in this timeline." in markdown
     assert "\n\n## Coverage Note\n" in markdown
+
+
+def test_build_cross_target_timeline_artifact_emits_shared_scope_and_local_scope_events() -> None:
+    artifact = timeline_module.build_cross_target_timeline_artifact(
+        tool_name="search_log",
+        results=[
+            {
+                "target_id": "node-a",
+                "target_host": "root@10.0.0.1",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.1] Found matches in /sf/log/app.log:\n"
+                    "2026-03-20 10:21:03 timeout while connecting to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+            {
+                "target_id": "node-b",
+                "target_host": "root@10.0.0.2",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.2] Found matches in /sf/log/app.log:\n"
+                    "2026-03-20 10:21:03 timeout while connecting to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+            {
+                "target_id": "node-c",
+                "target_host": "root@10.0.0.3",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.3] Found matches in /sf/log/app.log:\n"
+                    "2026-03-20 10:22:11 permission denied writing to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 22, 30),
+            },
+        ],
+    )
+
+    assert isinstance(artifact, TimelineArtifact)
+    assert artifact.target == "node-a,node-b,node-c"
+    assert artifact.coverage_note == "Only evidence with explicit timestamps is included in this timeline."
+    assert [event.scope for event in artifact.events] == ["shared", "shared", "local"]
+    assert [event.target for event in artifact.events] == ["node-a", "node-b", "node-c"]
+    assert [event.source for event in artifact.events] == ["search_log", "search_log", "search_log"]
+    assert all(event.timestamp_normalized for event in artifact.events)
+    assert all(event.timestamp_raw for event in artifact.events)
+    assert all(event.event for event in artifact.events)
+    assert all(event.evidence for event in artifact.events)
+    assert "timeout while connecting to storage backend" in artifact.events[0].event
+    assert "permission denied writing to storage backend" in artifact.events[2].event
+
+
+def test_build_cross_target_timeline_artifact_excludes_untimestamped_evidence_from_main_timeline_body() -> None:
+    artifact = timeline_module.build_cross_target_timeline_artifact(
+        tool_name="read_log_tail",
+        results=[
+            {
+                "target_id": "node-a",
+                "target_host": "root@10.0.0.1",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.1] tail 2 lines from /sf/log/app.log:\n"
+                    "2026-03-20 10:21:03 timeout while connecting to storage backend\n"
+                    "worker exited unexpectedly"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+            {
+                "target_id": "node-b",
+                "target_host": "root@10.0.0.2",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.2] tail 1 lines from /sf/log/app.log:\n"
+                    "2026-03-20 10:21:04 timeout while connecting to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+        ],
+    )
+
+    assert isinstance(artifact, TimelineArtifact)
+    assert "worker exited unexpectedly" not in " ".join(event.event for event in artifact.events)
+    assert artifact.coverage_note == "Only evidence with explicit timestamps is included in this timeline."
+    assert [event.scope for event in artifact.events] == ["shared", "shared"]
+    assert [event.target for event in artifact.events] == ["node-a", "node-b"]
+
+
+def test_build_cross_target_timeline_artifact_orders_near_shared_timestamps_deterministically() -> None:
+    artifact = timeline_module.build_cross_target_timeline_artifact(
+        tool_name="search_log",
+        results=[
+            {
+                "target_id": "node-c",
+                "target_host": "root@10.0.0.3",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.3] Found matches in /sf/log/app.log:\n"
+                    "2026-03-20 10:21:04 timeout while connecting to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+            {
+                "target_id": "node-a",
+                "target_host": "root@10.0.0.1",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.1] Found matches in /sf/log/app.log:\n"
+                    "2026-03-20 10:21:03 timeout while connecting to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+            {
+                "target_id": "node-b",
+                "target_host": "root@10.0.0.2",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.2] Found matches in /sf/log/app.log:\n"
+                    "2026-03-20 10:21:03 timeout while connecting to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+        ],
+    )
+
+    assert isinstance(artifact, TimelineArtifact)
+    assert [event.target for event in artifact.events] == ["node-a", "node-b", "node-c"]
+    assert [event.scope for event in artifact.events] == ["shared", "shared", "local"]
+    assert [event.timestamp_normalized for event in artifact.events[:2]] == [
+        artifact.events[0].timestamp_normalized,
+        artifact.events[1].timestamp_normalized,
+    ]
