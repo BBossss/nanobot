@@ -1,3 +1,4 @@
+from datetime import datetime
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -122,6 +123,261 @@ def test_aggregate_multi_target_results_groups_common_local_and_failures() -> No
     assert "active" in summary
     assert "Failed Targets" in summary
     assert "node-c: timeout" in summary
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "results"),
+    [
+        (
+            "search_log",
+            [
+                {
+                    "target_id": "node-b",
+                    "target_host": "root@10.0.0.2",
+                    "status": "ok",
+                    "content": (
+                        "[target=root@10.0.0.2] Found matches in /sf/log/app.log:\n"
+                        "18: 2026-03-18 10:21:03 timeout while connecting to storage backend"
+                    ),
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+                {
+                    "target_id": "node-a",
+                    "target_host": "root@10.0.0.1",
+                    "status": "ok",
+                    "content": (
+                        "[target=root@10.0.0.1] Found matches in /sf/log/app.log:\n"
+                        "12: 2026-03-18 10:21:03 timeout while connecting to storage backend"
+                    ),
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+                {
+                    "target_id": "node-c",
+                    "target_host": "root@10.0.0.3",
+                    "status": "ok",
+                    "content": (
+                        "[target=root@10.0.0.3] Found matches in /sf/log/app.log:\n"
+                        "21: 2026-03-18 10:22:11 permission denied writing to storage backend"
+                    ),
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+                {
+                    "target_id": "node-d",
+                    "target_host": "root@10.0.0.4",
+                    "status": "error",
+                    "content": "",
+                    "error": "ssh timeout",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+            ],
+        ),
+        (
+            "read_log_tail",
+            [
+                {
+                    "target_id": "node-b",
+                    "target_host": "root@10.0.0.2",
+                    "status": "ok",
+                    "content": (
+                        "[target=root@10.0.0.2] tail 1 lines from /sf/log/app.log:\n"
+                        "2026-03-18 10:21:03 timeout while connecting to storage backend"
+                    ),
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+                {
+                    "target_id": "node-a",
+                    "target_host": "root@10.0.0.1",
+                    "status": "ok",
+                    "content": (
+                        "[target=root@10.0.0.1] tail 1 lines from /sf/log/app.log:\n"
+                        "2026-03-18 10:21:03 timeout while connecting to storage backend"
+                    ),
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+                {
+                    "target_id": "node-c",
+                    "target_host": "root@10.0.0.3",
+                    "status": "ok",
+                    "content": (
+                        "[target=root@10.0.0.3] tail 1 lines from /sf/log/app.log:\n"
+                        "2026-03-18 10:22:11 permission denied writing to storage backend"
+                    ),
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+                {
+                    "target_id": "node-d",
+                    "target_host": "root@10.0.0.4",
+                    "status": "error",
+                    "content": "",
+                    "error": "ssh timeout",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+            ],
+        ),
+    ],
+)
+def test_aggregate_multi_target_results_returns_structured_log_aggregation_contract(
+    tool_name: str,
+    results: list[dict[str, object]],
+) -> None:
+    aggregation = aggregate_multi_target_results(tool_name=tool_name, results=results)
+
+    assert aggregation.tool_name == tool_name
+    assert aggregation.targets_total == 4
+    assert aggregation.ok_targets == ["node-b", "node-a", "node-c"]
+    assert [entry.target_id for entry in aggregation.per_target_results] == [
+        "node-b",
+        "node-a",
+        "node-c",
+        "node-d",
+    ]
+
+    assert len(aggregation.shared_findings) == 1
+    shared = aggregation.shared_findings[0]
+    assert shared.signature
+    assert shared.target_ids == ["node-b", "node-a"]
+    assert shared.target_hosts == ["root@10.0.0.2", "root@10.0.0.1"]
+    assert shared.count == 2
+    assert shared.kind == "shared"
+    assert "timeout while connecting to storage backend" in shared.sample_evidence
+
+    assert len(aggregation.local_findings) == 1
+    local = aggregation.local_findings[0]
+    assert local.signature
+    assert local.target_ids == ["node-c"]
+    assert local.target_hosts == ["root@10.0.0.3"]
+    assert local.count == 1
+    assert local.kind == "local"
+    assert "permission denied writing to storage backend" in local.sample_evidence
+
+    assert len(aggregation.failed_targets) == 1
+    failed = aggregation.failed_targets[0]
+    assert failed.target_id == "node-d"
+    assert failed.target_host == "root@10.0.0.4"
+    assert failed.status == "error"
+    assert failed.error == "ssh timeout"
+    assert "node-d" not in aggregation.shared_findings[0].target_ids
+    assert "node-d" not in aggregation.local_findings[0].target_ids
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "results"),
+    [
+        (
+            "service_status",
+            [
+                {
+                    "target_id": "node-c",
+                    "target_host": "root@10.0.0.3",
+                    "status": "ok",
+                    "content": "[target=root@10.0.0.3] service_status(nginx)\nactive (running)",
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+                {
+                    "target_id": "node-a",
+                    "target_host": "root@10.0.0.1",
+                    "status": "ok",
+                    "content": "[target=root@10.0.0.1] service_status(nginx)\nactive (running)",
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+                {
+                    "target_id": "node-b",
+                    "target_host": "root@10.0.0.2",
+                    "status": "ok",
+                    "content": "[target=root@10.0.0.2] service_status(nginx)\ninactive (dead)",
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+            ],
+        ),
+        (
+            "process_snapshot",
+            [
+                {
+                    "target_id": "node-c",
+                    "target_host": "root@10.0.0.3",
+                    "status": "ok",
+                    "content": "[target=root@10.0.0.3] process_snapshot(nginx)\nactive (running)",
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+                {
+                    "target_id": "node-a",
+                    "target_host": "root@10.0.0.1",
+                    "status": "ok",
+                    "content": "[target=root@10.0.0.1] process_snapshot(nginx)\nactive (running)",
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+                {
+                    "target_id": "node-b",
+                    "target_host": "root@10.0.0.2",
+                    "status": "ok",
+                    "content": "[target=root@10.0.0.2] process_snapshot(nginx)\ninactive (dead)",
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 18, 10, 30, 0),
+                },
+            ],
+        ),
+    ],
+)
+def test_aggregate_multi_target_results_returns_structured_state_aggregation_contract(
+    tool_name: str,
+    results: list[dict[str, object]],
+) -> None:
+    aggregation = aggregate_multi_target_results(tool_name=tool_name, results=results)
+
+    assert aggregation.tool_name == tool_name
+    assert aggregation.targets_total == 3
+    assert aggregation.ok_targets == ["node-c", "node-a", "node-b"]
+    assert aggregation.failed_targets == []
+    assert [entry.target_id for entry in aggregation.per_target_results] == [
+        "node-c",
+        "node-a",
+        "node-b",
+    ]
+    assert [entry.target_host for entry in aggregation.per_target_results] == [
+        "root@10.0.0.3",
+        "root@10.0.0.1",
+        "root@10.0.0.2",
+    ]
+    assert [entry.status for entry in aggregation.per_target_results] == ["ok", "ok", "ok"]
+    assert [entry.content for entry in aggregation.per_target_results] == [
+        "[target=root@10.0.0.3] "
+        + ("service_status(nginx)\nactive (running)" if tool_name == "service_status" else "process_snapshot(nginx)\nactive (running)"),
+        "[target=root@10.0.0.1] "
+        + ("service_status(nginx)\nactive (running)" if tool_name == "service_status" else "process_snapshot(nginx)\nactive (running)"),
+        "[target=root@10.0.0.2] "
+        + ("service_status(nginx)\ninactive (dead)" if tool_name == "service_status" else "process_snapshot(nginx)\ninactive (dead)"),
+    ]
+    assert all(entry.error == "" for entry in aggregation.per_target_results)
+    assert all(entry.observed_at == datetime(2026, 3, 18, 10, 30, 0) for entry in aggregation.per_target_results)
+
+    assert len(aggregation.shared_findings) == 1
+    shared = aggregation.shared_findings[0]
+    assert shared.signature
+    assert shared.target_ids == ["node-c", "node-a"]
+    assert shared.target_hosts == ["root@10.0.0.3", "root@10.0.0.1"]
+    assert shared.count == 2
+    assert shared.kind == "shared"
+    assert "active (running)" in shared.sample_evidence
+
+    assert len(aggregation.local_findings) == 1
+    local = aggregation.local_findings[0]
+    assert local.signature
+    assert local.target_ids == ["node-b"]
+    assert local.target_hosts == ["root@10.0.0.2"]
+    assert local.count == 1
+    assert local.kind == "local"
+    assert "inactive (dead)" in local.sample_evidence
 
 
 def test_aggregate_multi_target_results_includes_log_timeline_for_log_tools() -> None:
