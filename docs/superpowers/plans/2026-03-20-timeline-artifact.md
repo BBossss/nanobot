@@ -32,7 +32,7 @@
 **Files:**
 - Modify: `tests/test_result_policy.py`
 
-- [ ] **Step 1: Write focused failing timeline-artifact policy tests**
+- [x] **Step 1: Write focused failing timeline-artifact policy tests**
 
 Add policy-level tests for:
 
@@ -46,7 +46,7 @@ Add policy-level tests for:
 
 At least one unchanged-shaping test must assert a valid `Timestamp/Event/Evidence` timeline body is returned byte-for-byte.
 
-- [ ] **Step 2: Run the focused timeline policy tests to verify failure**
+- [x] **Step 2: Run the focused timeline policy tests to verify failure**
 
 Run:
 
@@ -73,7 +73,7 @@ If you do not want a red commit on this branch, skip the commit and proceed dire
 - Modify: `nanobot/agent/workflow/result_policy.py`
 - Modify: `tests/test_result_policy.py`
 
-- [ ] **Step 1: Implement valid timeline event-body detection**
+- [x] **Step 1: Implement valid timeline event-body detection**
 
 Update `result_policy.py` so `timeline_artifact` classification requires both:
 
@@ -88,7 +88,7 @@ Keep the detection conservative:
 - `Timestamp/Event/Evidence` bodies without explicit timeline markers must not qualify
 - ordinary troubleshooting replies remain shapeable
 
-- [ ] **Step 2: Run focused timeline policy tests**
+- [x] **Step 2: Run focused timeline policy tests**
 
 Run:
 
@@ -98,7 +98,7 @@ python3 -m pytest tests/test_result_policy.py -k "timeline_artifact or malformed
 
 Expected: PASS
 
-- [ ] **Step 3: Run broader result-policy regressions**
+- [x] **Step 3: Run broader result-policy regressions**
 
 Run:
 
@@ -108,7 +108,7 @@ python3 -m pytest tests/test_result_policy.py -k "timeline or evidence_first or 
 
 Expected: PASS
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add nanobot/agent/workflow/result_policy.py tests/test_result_policy.py
@@ -123,7 +123,7 @@ git commit -m "refactor: tighten stable timeline artifact classification"
 - Modify: `nanobot/agent/timeline.py`
 - Modify: `tests/test_log_timeline.py`
 
-- [ ] **Step 1: Write failing formatter/schema tests**
+- [x] **Step 1: Write failing formatter/schema tests**
 
 Add focused tests proving the formatter layer can produce a stable timeline artifact representation from parsed timeline inputs.
 
@@ -142,7 +142,7 @@ Cover:
 
 Keep these tests formatter-scoped; do not redesign `extract_log_events(...)`.
 
-- [ ] **Step 2: Run formatter/schema tests to verify failure**
+- [x] **Step 2: Run formatter/schema tests to verify failure**
 
 Run:
 
@@ -152,7 +152,7 @@ python3 -m pytest tests/test_log_timeline.py -k "artifact or formatter or normal
 
 Expected: FAIL because the stable artifact formatter/schema does not exist yet.
 
-- [ ] **Step 3: Implement minimal formatter/schema support**
+- [x] **Step 3: Implement minimal formatter/schema support**
 
 Add the smallest set of helpers in `nanobot/agent/timeline.py` needed to:
 
@@ -161,7 +161,7 @@ Add the smallest set of helpers in `nanobot/agent/timeline.py` needed to:
 
 Keep extraction behavior unchanged. If new dataclasses are needed, keep them local and minimal.
 
-- [ ] **Step 4: Run formatter/schema tests to verify pass**
+- [x] **Step 4: Run formatter/schema tests to verify pass**
 
 Run:
 
@@ -171,7 +171,7 @@ python3 -m pytest tests/test_log_timeline.py -k "artifact or formatter or normal
 
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add nanobot/agent/timeline.py tests/test_log_timeline.py
@@ -185,7 +185,7 @@ git commit -m "feat: add stable timeline artifact formatter"
 **Files:**
 - Modify: `tests/test_agentloop_troubleshooting_flow.py`
 
-- [ ] **Step 1: Write a failing AgentLoop regression**
+- [x] **Step 1: Write a failing AgentLoop regression**
 
 Add one focused end-to-end test proving a valid timeline artifact body remains unchanged when `workflow_result_mode = evidence_first`.
 
@@ -195,7 +195,7 @@ Use a realistic body with:
 - `## Events`
 - at least one event containing `Timestamp`, `Event`, and `Evidence`
 
-- [ ] **Step 2: Run the focused AgentLoop regression to verify current behavior**
+- [x] **Step 2: Run the focused AgentLoop regression to verify current behavior**
 
 Run:
 
@@ -207,7 +207,7 @@ Expected: PASS if behavior is already preserved, or FAIL if the integration path
 
 If it passes immediately, that is acceptable because the test is still new regression coverage.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add tests/test_agentloop_troubleshooting_flow.py
@@ -221,7 +221,7 @@ git commit -m "test: cover timeline artifact rewrite bypass"
 **Files:**
 - Modify: `docs/superpowers/plans/2026-03-20-timeline-artifact.md`
 
-- [ ] **Step 1: Run focused timeline and troubleshooting regressions**
+- [x] **Step 1: Run focused timeline and troubleshooting regressions**
 
 Run:
 
@@ -231,7 +231,7 @@ python3 -m pytest tests/test_log_timeline.py tests/test_result_policy.py tests/t
 
 Expected: PASS
 
-- [ ] **Step 2: Run the full policy and timeline slices**
+- [x] **Step 2: Run the full policy and timeline slices**
 
 Run:
 
@@ -251,7 +251,7 @@ python3 -m pytest -q
 
 Expected: PASS, or document any unrelated pre-existing failure clearly.
 
-- [ ] **Step 4: Mark completed plan checkboxes**
+- [x] **Step 4: Mark completed plan checkboxes**
 
 Update this plan to reflect actual execution status.
 
