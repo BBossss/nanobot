@@ -139,6 +139,27 @@ def test_classification_returns_timeline_artifact_for_canonical_markdown_timelin
     )
 
 
+def test_classification_returns_timeline_artifact_for_canonical_timeline_body_with_optional_target_and_source() -> None:
+    _assert_classification(
+        user_content="整理一下这次故障时间线",
+        final_content=(
+            "# Timeline\n"
+            "## Events\n"
+            "- Timestamp: 2026-03-20 10:00\n"
+            "  Event: service started\n"
+            "  Evidence: boot log entries\n"
+            "  Target: node-a\n"
+            "  Source: /var/log/service.log:12\n"
+            "- Timestamp: 2026-03-20 10:05\n"
+            "  Event: timeout spike\n"
+            "  Evidence: repeated 504s in logs\n"
+            "  Target: node-b\n"
+            "  Source: /var/log/service.log:48\n"
+        ),
+        expected_kind="timeline_artifact",
+    )
+
+
 def test_classification_returns_timeline_artifact_for_frontmatter_marked_timeline_body() -> None:
     _assert_classification(
         user_content="整理成 timeline artifact",
@@ -152,6 +173,22 @@ def test_classification_returns_timeline_artifact_for_frontmatter_marked_timelin
             "- Timestamp: 2026-03-20 10:05\n"
             "  Event: timeout spike\n"
             "  Evidence: repeated 504s in logs\n"
+        ),
+        expected_kind="timeline_artifact",
+    )
+
+
+def test_classification_returns_timeline_artifact_for_frontmatter_only_marker_timeline_body() -> None:
+    _assert_classification(
+        user_content="整理成 timeline artifact",
+        final_content=(
+            "---\nkind: timeline\n---\n"
+            "## Events\n"
+            "- Timestamp: 2026-03-20 10:00\n"
+            "  Event: service started\n"
+            "  Evidence: boot log entries\n"
+            "  Target: node-a\n"
+            "  Source: /var/log/service.log:12\n"
         ),
         expected_kind="timeline_artifact",
     )
@@ -356,6 +393,33 @@ def test_shape_evidence_first_result_leaves_canonical_timeline_body_unchanged_by
         "- Timestamp: 2026-03-20 10:05\n"
         "  Event: timeout spike\n"
         "  Evidence: repeated 504s in logs\n"
+    )
+
+    shaped = workflow_result_policy.shape_evidence_first_result(
+        session=session,
+        user_content="整理一下这次故障时间线",
+        final_content=final_content,
+        messages=None,
+    )
+
+    assert shaped == final_content
+
+
+def test_shape_evidence_first_result_leaves_canonical_timeline_body_with_optional_target_and_source_unchanged_byte_for_byte() -> None:
+    session = SimpleNamespace(metadata={"workflow_result_mode": "evidence_first"})
+    final_content = (
+        "# Timeline\n"
+        "## Events\n"
+        "- Timestamp: 2026-03-20 10:00\n"
+        "  Event: service started\n"
+        "  Evidence: boot log entries\n"
+        "  Target: node-a\n"
+        "  Source: /var/log/service.log:12\n"
+        "- Timestamp: 2026-03-20 10:05\n"
+        "  Event: timeout spike\n"
+        "  Evidence: repeated 504s in logs\n"
+        "  Target: node-b\n"
+        "  Source: /var/log/service.log:48\n"
     )
 
     shaped = workflow_result_policy.shape_evidence_first_result(

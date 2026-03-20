@@ -154,6 +154,7 @@ def has_valid_timeline_event_body(content: str) -> bool:
         r"(?ms)^\s*-\s*Timestamp:\s*(?P<timestamp>[^\n]+?)\s*\n"
         r"\s*Event:\s*(?P<event>[^\n]+?)\s*\n"
         r"\s*Evidence:\s*(?P<evidence>[^\n]+?)"
+        r"(?:\n\s*(?:Target|Source):\s*[^\n]+?)*"
         r"(?=\n\s*-\s*Timestamp:|\n#{1,6}\s+|\Z)"
     )
     return event_entry_pattern.search(text) is not None
