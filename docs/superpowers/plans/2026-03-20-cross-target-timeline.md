@@ -218,7 +218,7 @@ python3 -m pytest tests/test_multi_target_troubleshooting.py -v
 
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add nanobot/agent/multi_target.py tests/test_multi_target_troubleshooting.py
@@ -232,7 +232,7 @@ git commit -m "feat: connect multi-target log evidence to timeline artifact"
 **Files:**
 - Modify: `tests/test_result_policy.py`
 
-- [ ] **Step 1: Write failing result-policy tests for cross-target timeline artifact recognition**
+- [x] **Step 1: Write failing result-policy tests for cross-target timeline artifact recognition**
 
 Add focused tests proving the new cross-target timeline Markdown output:
 
@@ -240,7 +240,7 @@ Add focused tests proving the new cross-target timeline Markdown output:
 - remains rewrite-protected under `shape_evidence_first_result(...)`
 - keeps target lists or cross-target scope markers without downgrading classification
 
-- [ ] **Step 2: Run focused result-policy tests to verify failure or immediate pass**
+- [x] **Step 2: Run focused result-policy tests to verify failure or immediate pass**
 
 Run:
 
@@ -252,7 +252,7 @@ Expected: PASS if the existing artifact rules already cover the new output shape
 
 If it passes immediately, that is acceptable because the regression coverage is still new.
 
-- [ ] **Step 3: Implement the minimal policy adjustment only if needed**
+- [x] **Step 3: Implement the minimal policy adjustment only if needed**
 
 If the focused result-policy tests fail:
 
@@ -261,7 +261,7 @@ If the focused result-policy tests fail:
 
 If the tests already pass, skip implementation changes and keep the coverage-only slice.
 
-- [ ] **Step 4: Run focused result-policy timeline tests**
+- [x] **Step 4: Run focused result-policy timeline tests**
 
 Run:
 
@@ -271,7 +271,7 @@ python3 -m pytest tests/test_result_policy.py -k "timeline_artifact or cross_tar
 
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add tests/test_result_policy.py nanobot/agent/workflow/result_policy.py

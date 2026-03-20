@@ -237,6 +237,35 @@ def test_classification_returns_timeline_artifact_for_frontmatter_only_marker_ti
     )
 
 
+def test_classification_returns_timeline_artifact_for_cross_target_timeline_body() -> None:
+    _assert_classification(
+        user_content="整理一下这次故障时间线",
+        final_content=(
+            "# Timeline\n"
+            "Incident: storage timeout incident\n"
+            "Target: node-a,node-b,node-c\n"
+            "Window: 2026-03-20T10:21:03 to 2026-03-20T10:22:11\n"
+            "\n"
+            "## Events\n"
+            "\n"
+            "- Timestamp: 2026-03-20T10:21:03\n"
+            "  Event: shared timeout while connecting to storage backend appeared on node-a,node-b\n"
+            "  Evidence: 2026-03-20 10:21:03 timeout while connecting to storage backend\n"
+            "  Target: node-a,node-b\n"
+            "  Source: search_log\n"
+            "  Scope: shared\n"
+            "\n"
+            "- Timestamp: 2026-03-20T10:22:11\n"
+            "  Event: local permission denied writing to storage backend appeared on node-c\n"
+            "  Evidence: 2026-03-20 10:22:11 permission denied writing to storage backend\n"
+            "  Target: node-c\n"
+            "  Source: search_log\n"
+            "  Scope: local\n"
+        ),
+        expected_kind="timeline_artifact",
+    )
+
+
 def test_classification_does_not_treat_malformed_timeline_heading_without_valid_events_as_timeline_artifact() -> None:
     _assert_classification(
         user_content="整理一下这次故障时间线",
@@ -488,6 +517,41 @@ def test_shape_evidence_first_result_leaves_timeline_body_with_optional_target_s
         "\n"
         "## Coverage Note\n"
         "Only evidence with explicit timestamps is included in this timeline.\n"
+    )
+
+    shaped = workflow_result_policy.shape_evidence_first_result(
+        session=session,
+        user_content="整理一下这次故障时间线",
+        final_content=final_content,
+        messages=None,
+    )
+
+    assert shaped == final_content
+
+
+def test_shape_evidence_first_result_leaves_cross_target_timeline_body_unchanged_byte_for_byte() -> None:
+    session = SimpleNamespace(metadata={"workflow_result_mode": "evidence_first"})
+    final_content = (
+        "# Timeline\n"
+        "Incident: storage timeout incident\n"
+        "Target: node-a,node-b,node-c\n"
+        "Window: 2026-03-20T10:21:03 to 2026-03-20T10:22:11\n"
+        "\n"
+        "## Events\n"
+        "\n"
+        "- Timestamp: 2026-03-20T10:21:03\n"
+        "  Event: shared timeout while connecting to storage backend appeared on node-a,node-b\n"
+        "  Evidence: 2026-03-20 10:21:03 timeout while connecting to storage backend\n"
+        "  Target: node-a,node-b\n"
+        "  Source: search_log\n"
+        "  Scope: shared\n"
+        "\n"
+        "- Timestamp: 2026-03-20T10:22:11\n"
+        "  Event: local permission denied writing to storage backend appeared on node-c\n"
+        "  Evidence: 2026-03-20 10:22:11 permission denied writing to storage backend\n"
+        "  Target: node-c\n"
+        "  Source: search_log\n"
+        "  Scope: local\n"
     )
 
     shaped = workflow_result_policy.shape_evidence_first_result(
