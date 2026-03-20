@@ -588,6 +588,38 @@ async def test_workflow_result_mode_does_not_rewrite_structured_artifact_paths(
 
 
 @pytest.mark.asyncio
+async def test_workflow_result_mode_does_not_rewrite_timeline_artifact_body(tmp_path: Path) -> None:
+    loop = _make_loop(tmp_path)
+    body = (
+        "# Timeline\n"
+        "Incident: storage timeout incident\n"
+        "Target: node-a\n"
+        "Window: 2026-03-18T10:21:03Z to 2026-03-18T10:28:41Z\n"
+        "\n"
+        "## Events\n"
+        "\n"
+        "- Timestamp: 2026-03-18T10:21:03Z\n"
+        "  Event: node-a started reporting storage backend timeout\n"
+        "  Evidence: /var/log/storage.log:120 `timeout while connecting to backend`\n"
+        "  Target: node-a\n"
+        "  Source: search_log\n"
+        "\n"
+        "## Coverage Note\n"
+        "\n"
+        "Only evidence with explicit timestamps is included in this timeline.\n"
+    )
+    loop.provider.chat = AsyncMock(return_value=LLMResponse(content=body, tool_calls=[]))
+    session = loop.sessions.get_or_create("cli:workflow")
+    session.metadata["workflow_result_mode"] = "evidence_first"
+    session.metadata["workflow_result_mode_reason"] = "先别急着下结论"
+    loop.sessions.save(session)
+
+    result = await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
+
+    assert result == body.strip()
+
+
+@pytest.mark.asyncio
 async def test_evidence_first_result_shaping_downgrades_strong_conclusion_and_keeps_evidence_first(
     tmp_path: Path,
 ) -> None:
