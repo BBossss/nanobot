@@ -32,7 +32,7 @@
 **Files:**
 - Modify: `tests/test_log_timeline.py`
 
-- [ ] **Step 1: Write failing tests for shared and local cross-target events**
+- [x] **Step 1: Write failing tests for shared and local cross-target events**
 
 Add focused tests proving a new cross-target timeline builder can:
 
@@ -51,7 +51,7 @@ The event-level contract should lock:
 - `source`
 - `scope`
 
-- [ ] **Step 2: Write failing tests for strict timestamp-only admission**
+- [x] **Step 2: Write failing tests for strict timestamp-only admission**
 
 Add focused tests proving:
 
@@ -59,7 +59,7 @@ Add focused tests proving:
 - a coverage note or equivalent exclusion note can still be present
 - event ordering remains deterministic for identical or near-identical timestamps
 
-- [ ] **Step 3: Run focused cross-target timeline tests to verify failure**
+- [x] **Step 3: Run focused cross-target timeline tests to verify failure**
 
 Run:
 
@@ -69,7 +69,7 @@ python3 -m pytest tests/test_log_timeline.py -k "cross_target or shared_scope or
 
 Expected: FAIL because the cross-target timeline builder does not exist yet.
 
-- [ ] **Step 4: Commit the red test slice if it is isolated and readable**
+- [x] **Step 4: Commit the red test slice if it is isolated and readable**
 
 ```bash
 git add tests/test_log_timeline.py
@@ -84,7 +84,7 @@ If you do not want a red commit on the branch, skip the commit and proceed direc
 - Modify: `nanobot/agent/timeline.py`
 - Modify: `tests/test_log_timeline.py`
 
-- [ ] **Step 1: Add the minimal cross-target event structures**
+- [x] **Step 1: Add the minimal cross-target event structures**
 
 Implement the smallest additions needed to represent cross-target timeline events while staying close to the existing `TimelineArtifact` / `TimelineArtifactEvent` structures.
 
@@ -94,7 +94,7 @@ Keep the first phase narrow:
 - small stable `scope` vocabulary: `shared`, `near_shared`, `local`
 - no extra artifact kinds
 
-- [ ] **Step 2: Add the cross-target timeline builder**
+- [x] **Step 2: Add the cross-target timeline builder**
 
 Implement the smallest builder that:
 
@@ -106,7 +106,7 @@ Implement the smallest builder that:
 
 Do not add root-cause candidate logic in this task.
 
-- [ ] **Step 3: Run focused cross-target timeline tests**
+- [x] **Step 3: Run focused cross-target timeline tests**
 
 Run:
 
@@ -116,7 +116,7 @@ python3 -m pytest tests/test_log_timeline.py -k "cross_target or shared_scope or
 
 Expected: PASS
 
-- [ ] **Step 4: Run the full timeline test slice**
+- [x] **Step 4: Run the full timeline test slice**
 
 Run:
 
