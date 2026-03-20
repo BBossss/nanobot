@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 import re
 from datetime import datetime
 from typing import Any, Awaitable, Callable
@@ -18,9 +19,56 @@ SUPPORTED_MULTI_TARGET_TOOLS = {
     "process_snapshot",
     "search_log",
     "read_log_tail",
-    "find_logs",
 }
 LOG_MULTI_TARGET_TOOLS = {"search_log", "read_log_tail"}
+
+
+@dataclass(slots=True)
+class MultiTargetPerTargetResult:
+    target_id: str
+    target_host: str
+    status: str
+    content: str
+    error: str
+    observed_at: datetime
+
+
+@dataclass(slots=True)
+class MultiTargetFailedTarget:
+    target_id: str
+    target_host: str
+    status: str
+    error: str
+
+
+@dataclass(slots=True)
+class MultiTargetFinding:
+    signature: str
+    target_ids: list[str]
+    target_hosts: list[str]
+    count: int
+    kind: str
+    sample_evidence: str
+
+
+@dataclass(slots=True)
+class MultiTargetAggregation:
+    tool_name: str
+    targets_total: int
+    ok_targets: list[str]
+    failed_targets: list[MultiTargetFailedTarget]
+    shared_findings: list[MultiTargetFinding]
+    local_findings: list[MultiTargetFinding]
+    per_target_results: list[MultiTargetPerTargetResult]
+    _rendered_summary: str = field(default="", repr=False, compare=False)
+
+    def __str__(self) -> str:
+        return self._rendered_summary
+
+    def __contains__(self, item: object) -> bool:
+        if not isinstance(item, str):
+            return False
+        return item in self._rendered_summary
 
 
 def supports_multi_target_tool(name: str) -> bool:
@@ -62,60 +110,124 @@ async def execute_multi_target_tool(
         f"{item['error'] or item['content']}"
         for item in collected
     ]
-    return summary + "\n\n## Per-Target Results\n" + "\n\n".join(rendered)
+    return str(summary) + "\n\n## Per-Target Results\n" + "\n\n".join(rendered)
 
 
-def aggregate_multi_target_results(*, tool_name: str, results: list[dict[str, Any]]) -> str:
+def aggregate_multi_target_results(
+    *,
+    tool_name: str,
+    results: list[dict[str, Any]],
+) -> MultiTargetAggregation:
     """Build a compact multi-target summary for one tool invocation."""
-    signatures: dict[str, list[str]] = {}
-    failures: list[str] = []
+    per_target_results: list[MultiTargetPerTargetResult] = []
+    ok_targets: list[str] = []
+    failed_targets: list[MultiTargetFailedTarget] = []
+    grouped: dict[str, list[MultiTargetPerTargetResult]] = {}
     timeline_events = []
 
     for item in results:
         target_id = str(item.get("target_id", "unknown"))
+        target_host = str(item.get("target_host", "unknown"))
         status = str(item.get("status", "ok"))
-        if status != "ok":
-            failures.append(f"- {target_id}: {item.get('error') or 'unknown error'}")
-            continue
-        signature = _normalize_content_signature(
-            tool_name=tool_name,
-            content=str(item.get("content", "")),
+        content = str(item.get("content", ""))
+        error = str(item.get("error", ""))
+        observed_at = item.get("observed_at")
+        if not isinstance(observed_at, datetime):
+            observed_at = datetime.now()
+
+        record = MultiTargetPerTargetResult(
+            target_id=target_id,
+            target_host=target_host,
+            status=status,
+            content=content,
+            error=error,
+            observed_at=observed_at,
         )
-        signatures.setdefault(signature, []).append(target_id)
+        per_target_results.append(record)
+
+        if status != "ok":
+            failed_targets.append(
+                MultiTargetFailedTarget(
+                    target_id=target_id,
+                    target_host=target_host,
+                    status=status,
+                    error=error or "unknown error",
+                )
+            )
+            continue
+
+        ok_targets.append(target_id)
+        signature = _normalize_content_signature(tool_name=tool_name, content=content)
+        grouped.setdefault(signature, []).append(record)
         if tool_name in LOG_MULTI_TARGET_TOOLS:
-            observed_at = item.get("observed_at")
-            if not isinstance(observed_at, datetime):
-                observed_at = datetime.now()
             timeline_events.extend(
                 extract_log_events(
                     target_id=target_id,
                     tool_name=tool_name,
-                    content=str(item.get("content", "")),
+                    content=content,
                     observed_at=observed_at,
                 )
             )
 
-    lines = [f"## Multi-Target Summary: {tool_name}"]
-    if signatures:
-        common = {sig: targets for sig, targets in signatures.items() if len(targets) > 1}
-        local = {sig: targets for sig, targets in signatures.items() if len(targets) == 1}
-        if common:
+    shared_findings: list[MultiTargetFinding] = []
+    local_findings: list[MultiTargetFinding] = []
+    for signature, records in grouped.items():
+        target_ids = [record.target_id for record in records]
+        target_hosts = [record.target_host for record in records]
+        finding = MultiTargetFinding(
+            signature=signature,
+            target_ids=target_ids,
+            target_hosts=target_hosts,
+            count=len(records),
+            kind="shared" if len(records) > 1 else "local",
+            sample_evidence=signature,
+        )
+        if len(records) > 1:
+            shared_findings.append(finding)
+        else:
+            local_findings.append(finding)
+
+    aggregation = MultiTargetAggregation(
+        tool_name=tool_name,
+        targets_total=len(results),
+        ok_targets=ok_targets,
+        failed_targets=failed_targets,
+        shared_findings=shared_findings,
+        local_findings=local_findings,
+        per_target_results=per_target_results,
+    )
+    rendered = _render_multi_target_summary(
+        aggregation=aggregation,
+        timeline_events=timeline_events,
+    )
+    aggregation._rendered_summary = rendered
+    return aggregation
+
+
+def _render_multi_target_summary(
+    *,
+    aggregation: MultiTargetAggregation,
+    timeline_events: list[Any],
+) -> str:
+    lines = [f"## Multi-Target Summary: {aggregation.tool_name}"]
+    if aggregation.shared_findings or aggregation.local_findings:
+        if aggregation.shared_findings:
             lines.append("### Common Findings")
-            for sig, targets in common.items():
-                lines.append(f"- {', '.join(targets)}: {sig}")
-        if local:
+            for finding in aggregation.shared_findings:
+                lines.append(f"- {', '.join(finding.target_ids)}: {finding.signature}")
+        if aggregation.local_findings:
             lines.append("### Local Findings")
-            for sig, targets in local.items():
-                lines.append(f"- {targets[0]}: {sig}")
+            for finding in aggregation.local_findings:
+                lines.append(f"- {finding.target_ids[0]}: {finding.signature}")
     else:
         lines.append("- No successful target results.")
 
-    if failures:
+    if aggregation.failed_targets:
         lines.append("### Failed Targets")
-        lines.extend(failures)
+        for failed in aggregation.failed_targets:
+            lines.append(f"- {failed.target_id}: {failed.error}")
 
-    timeline_summary = ""
-    if tool_name in LOG_MULTI_TARGET_TOOLS and timeline_events:
+    if aggregation.tool_name in LOG_MULTI_TARGET_TOOLS and timeline_events:
         timeline_summary = build_log_timeline(timeline_events)
         if timeline_summary:
             lines.extend(["", timeline_summary])
