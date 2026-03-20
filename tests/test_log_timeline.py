@@ -4,7 +4,6 @@ from nanobot.agent.timeline import (
     TimelineArtifact,
     TimelineArtifactEvent,
     build_log_timeline,
-    build_timeline_artifact_from_log_events,
     extract_log_events,
     format_timeline_artifact,
 )
@@ -186,24 +185,22 @@ def test_build_log_timeline_uses_stable_order_for_identical_timestamps() -> None
 
 
 def test_build_timeline_artifact_preserves_normalized_and_raw_timestamp() -> None:
-    observed_at = datetime(2026, 3, 18, 10, 30, 0)
-    log_events = extract_log_events(
-        target_id="node-a",
-        tool_name="read_log_tail",
-        content=(
-            "[target=root@10.0.0.1] tail 1 lines from /sf/log/app.log:\n"
-            "2026-03-18 10:21:03 timeout while connecting"
-        ),
-        observed_at=observed_at,
-    )
-
-    artifact = build_timeline_artifact_from_log_events(
-        log_events,
+    artifact = TimelineArtifact(
         incident="storage timeout incident",
         target="node-a",
         window_start="2026-03-18T10:21:03",
         window_end="2026-03-18T10:28:41",
         coverage_note="Only evidence with explicit timestamps is included in this timeline.",
+        events=[
+            TimelineArtifactEvent(
+                timestamp_normalized="2026-03-18T10:21:03",
+                timestamp_raw="2026-03-18 10:21:03",
+                event="timeout while connecting",
+                evidence="2026-03-18 10:21:03 timeout while connecting",
+                target="node-a",
+                source="read_log_tail",
+            )
+        ],
     )
 
     assert artifact.incident == "storage timeout incident"

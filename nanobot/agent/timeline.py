@@ -43,7 +43,6 @@ class LogTimelineEvent:
     target_id: str
     tool_name: str
     event_time: datetime | None
-    timestamp_raw: str | None
     observed_at: datetime
     raw_line: str
     normalized_message: str
@@ -64,14 +63,12 @@ def extract_log_events(
         if not line or _is_header_line(line):
             continue
         event_time = _parse_timestamp(line)
-        timestamp_raw = _extract_timestamp_text(line)
         normalized = _normalize_message(line)
         events.append(
             LogTimelineEvent(
                 target_id=target_id,
                 tool_name=tool_name,
                 event_time=event_time,
-                timestamp_raw=timestamp_raw,
                 observed_at=observed_at,
                 raw_line=line,
                 normalized_message=normalized,
@@ -129,7 +126,7 @@ def build_timeline_artifact_from_log_events(
     artifact_events = [
         TimelineArtifactEvent(
             timestamp_normalized=event.event_time.isoformat(),
-            timestamp_raw=event.timestamp_raw or event.event_time.isoformat(sep=" "),
+            timestamp_raw=_extract_timestamp_text(event.raw_line) or event.event_time.isoformat(sep=" "),
             event=event.normalized_message,
             evidence=event.raw_line,
             target=event.target_id,
