@@ -5,6 +5,7 @@ import pytest
 from nanobot.agent.timeline import (
     TimelineArtifact,
     TimelineArtifactEvent,
+    build_cross_target_timeline_artifact,
     build_log_timeline,
     extract_log_events,
     format_timeline_artifact,
@@ -184,6 +185,142 @@ def test_build_log_timeline_uses_stable_order_for_identical_timestamps() -> None
     summary = build_log_timeline(events)
 
     assert summary.index("10:21:03 node-a") < summary.index("10:21:03 node-b")
+
+
+def test_build_cross_target_timeline_artifact_emits_shared_and_local_scoped_events() -> None:
+    observed_at = datetime(2026, 3, 18, 10, 30, 0)
+    events = []
+    events.extend(
+        extract_log_events(
+            target_id="node-b",
+            tool_name="search_log",
+            content=(
+                "[target=root@10.0.0.2] Found matches in /sf/log/app.log:\n"
+                "18: 2026-03-18 10:21:05 timeout while connecting to storage backend"
+            ),
+            observed_at=observed_at,
+        )
+    )
+    events.extend(
+        extract_log_events(
+            target_id="node-a",
+            tool_name="read_log_tail",
+            content=(
+                "[target=root@10.0.0.1] tail 1 lines from /sf/log/app.log:\n"
+                "2026-03-18 10:21:03 timeout while connecting to storage backend"
+            ),
+            observed_at=observed_at,
+        )
+    )
+    events.extend(
+        extract_log_events(
+            target_id="node-c",
+            tool_name="search_log",
+            content=(
+                "[target=root@10.0.0.3] Found matches in /sf/log/app.log:\n"
+                "21: 2026-03-18 10:22:11 permission denied writing to storage backend"
+            ),
+            observed_at=observed_at,
+        )
+    )
+
+    artifact = build_cross_target_timeline_artifact(
+        events,
+        incident="storage timeout incident",
+        target_scope="node-a,node-b,node-c",
+    )
+
+    assert artifact.incident == "storage timeout incident"
+    assert artifact.target == "node-a,node-b,node-c"
+    assert artifact.window_start == "2026-03-18T10:21:03"
+    assert artifact.window_end == "2026-03-18T10:22:11"
+    assert artifact.coverage_note == "Only evidence with explicit timestamps is included in this timeline."
+    assert len(artifact.events) == 2
+
+    shared = artifact.events[0]
+    assert shared.timestamp_normalized == "2026-03-18T10:21:03"
+    assert shared.timestamp_raw == "2026-03-18 10:21:03"
+    assert "node-a" in shared.event and "node-b" in shared.event
+    assert "timeout while connecting to storage backend" in shared.evidence
+    assert shared.target == "node-a,node-b"
+    assert shared.source == "search_log,read_log_tail"
+    assert shared.scope == "near_shared"
+
+    local = artifact.events[1]
+    assert local.timestamp_normalized == "2026-03-18T10:22:11"
+    assert local.timestamp_raw == "2026-03-18 10:22:11"
+    assert "node-c" in local.event
+    assert "permission denied writing to storage backend" in local.evidence
+    assert local.target == "node-c"
+    assert local.source == "search_log"
+    assert local.scope == "local"
+
+
+def test_build_cross_target_timeline_artifact_excludes_untimestamped_events_from_body() -> None:
+    observed_at = datetime(2026, 3, 18, 10, 30, 0)
+    events = extract_log_events(
+        target_id="node-a",
+        tool_name="search_log",
+        content=(
+            "[target=root@10.0.0.1] Found 2 match(es) in /sf/log/app.log:\n"
+            "12: timeout while connecting to storage backend\n"
+            "18: retry still failing"
+        ),
+        observed_at=observed_at,
+    )
+
+    artifact = build_cross_target_timeline_artifact(
+        events,
+        incident="storage timeout incident",
+        target_scope="node-a",
+    )
+
+    assert artifact.events == []
+    assert artifact.coverage_note == "Only evidence with explicit timestamps is included in this timeline."
+
+
+def test_build_cross_target_timeline_artifact_uses_stable_order_for_identical_timestamp_groups() -> None:
+    observed_at = datetime(2026, 3, 18, 10, 30, 0)
+    events = []
+    events.extend(
+        extract_log_events(
+            target_id="node-b",
+            tool_name="search_log",
+            content=(
+                "[target=root@10.0.0.2] Found matches in /sf/log/app.log:\n"
+                "18: 2026-03-18 10:21:03 timeout while connecting to storage backend"
+            ),
+            observed_at=observed_at,
+        )
+    )
+    events.extend(
+        extract_log_events(
+            target_id="node-a",
+            tool_name="search_log",
+            content=(
+                "[target=root@10.0.0.1] Found matches in /sf/log/app.log:\n"
+                "12: 2026-03-18 10:21:03 timeout while connecting to storage backend"
+            ),
+            observed_at=observed_at,
+        )
+    )
+    events.extend(
+        extract_log_events(
+            target_id="node-c",
+            tool_name="search_log",
+            content=(
+                "[target=root@10.0.0.3] Found matches in /sf/log/app.log:\n"
+                "21: 2026-03-18 10:21:03 timeout while connecting to storage backend"
+            ),
+            observed_at=observed_at,
+        )
+    )
+
+    artifact = build_cross_target_timeline_artifact(events, target_scope="node-a,node-b,node-c")
+
+    assert len(artifact.events) == 1
+    assert artifact.events[0].target == "node-a,node-b,node-c"
+    assert artifact.events[0].scope == "shared"
 
 
 def test_build_timeline_artifact_preserves_normalized_and_raw_timestamp() -> None:
