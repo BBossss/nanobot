@@ -47,7 +47,15 @@ Also add focused tests proving the wrapper works correctly in both modes:
 - with `user_content` present, it follows the same kind path as `classify_output_kind(...)`
 - without `user_content`, it uses the content-only fallback conservatively
 
-At least one no-context test must prove a plain troubleshooting summary remains eligible, and at least one no-context test must prove a timeline/root-cause artifact remains ineligible.
+The no-context coverage must explicitly pin all practical fallback outcomes:
+
+- troubleshooting summary remains eligible
+- inspection artifact remains ineligible
+- report artifact remains ineligible
+- case artifact remains ineligible
+- timeline artifact remains ineligible
+- root-cause candidate artifact remains ineligible
+- generic reply remains ineligible
 
 - [ ] **Step 2: Run the focused wrapper tests to verify failure**
 
@@ -108,7 +116,21 @@ Behavior:
 
 The fallback must not return rewrite decisions directly.
 
-- [ ] **Step 3: Update `shape_evidence_first_result(...)` to use only the single eligibility contract**
+- [ ] **Step 3: Extend focused dispatch coverage before changing the shaper**
+
+Add policy-level tests proving:
+
+- `shape_evidence_first_result(...)` still rewrites `troubleshooting_reply`
+- `inspection_artifact` stays unchanged
+- `report_artifact` stays unchanged
+- `case_artifact` stays unchanged
+- `timeline_artifact` stays unchanged
+- `root_cause_candidate` stays unchanged
+- `generic_reply` stays unchanged
+
+Keep at least one troubleshooting shaping assertion that still checks the strong-conclusion downgrade produces `当前倾向`.
+
+- [ ] **Step 4: Update `shape_evidence_first_result(...)` to use only the single eligibility contract**
 
 Refactor it so that it:
 
@@ -119,17 +141,17 @@ Refactor it so that it:
 
 The visible output for current troubleshooting replies must remain unchanged.
 
-- [ ] **Step 4: Run focused policy tests**
+- [ ] **Step 5: Run focused policy tests**
 
 Run:
 
 ```bash
-python3 -m pytest tests/test_result_policy.py -k "candidate and eligibility or dispatch or shaping" -v
+python3 -m pytest tests/test_result_policy.py -k "candidate and eligibility or dispatch or shaping or timeline or root" -v
 ```
 
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add nanobot/agent/workflow/result_policy.py tests/test_result_policy.py
