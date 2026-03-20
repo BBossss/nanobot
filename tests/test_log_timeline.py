@@ -282,6 +282,7 @@ def test_format_timeline_artifact_raises_on_empty_events() -> None:
     ("field_name", "field_value", "expected_message"),
     [
         ("timestamp_normalized", " ", "timestamp_normalized"),
+        ("timestamp_raw", "", "timestamp_raw"),
         ("event", "", "event"),
         ("evidence", " ", "evidence"),
     ],
