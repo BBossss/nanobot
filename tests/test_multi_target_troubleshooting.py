@@ -6,6 +6,7 @@ import pytest
 
 from nanobot.agent.loop import AgentLoop
 from nanobot.agent.multi_target import aggregate_multi_target_results, execute_multi_target_tool
+from nanobot.agent.timeline import TimelineArtifact, format_timeline_artifact
 from nanobot.bus.queue import MessageBus
 from nanobot.config.schema import ExecToolConfig
 from nanobot.providers.base import LLMResponse, ToolCallRequest
@@ -396,6 +397,200 @@ def test_aggregate_multi_target_results_returns_structured_log_aggregation_contr
     assert failed.error == "ssh timeout"
     assert "node-d" not in aggregation.shared_findings[0].target_ids
     assert "node-d" not in aggregation.local_findings[0].target_ids
+
+
+def test_cross_target_timeline_artifact_output_from_search_log_shared_plus_local_evidence() -> None:
+    aggregation = aggregate_multi_target_results(
+        tool_name="search_log",
+        results=[
+            {
+                "target_id": "node-a",
+                "target_host": "root@10.0.0.1",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.1] Found matches in /sf/log/app.log:\n"
+                    "2026-03-20 10:21:03 timeout while connecting to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+            {
+                "target_id": "node-b",
+                "target_host": "root@10.0.0.2",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.2] Found matches in /sf/log/app.log:\n"
+                    "2026-03-20 10:21:03 timeout while connecting to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+            {
+                "target_id": "node-c",
+                "target_host": "root@10.0.0.3",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.3] Found matches in /sf/log/app.log:\n"
+                    "2026-03-20 10:22:11 permission denied writing to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 22, 30),
+            },
+        ],
+    )
+
+    artifact = aggregation.build_cross_target_timeline_artifact(
+        incident="storage timeout incident",
+        target_scope="node-a,node-b,node-c",
+    )
+
+    assert isinstance(artifact, TimelineArtifact)
+    assert artifact.target == "node-a,node-b,node-c"
+    assert [event.scope for event in artifact.events] == ["shared", "local"]
+    assert [event.target for event in artifact.events] == ["node-a,node-b", "node-c"]
+    markdown = format_timeline_artifact(artifact)
+    assert markdown.startswith("# Timeline")
+    assert "## Events" in markdown
+    assert "timeout while connecting to storage backend" in markdown
+    assert "permission denied writing to storage backend" in markdown
+
+
+def test_cross_target_timeline_artifact_output_from_read_log_tail_near_shared_evidence() -> None:
+    aggregation = aggregate_multi_target_results(
+        tool_name="read_log_tail",
+        results=[
+            {
+                "target_id": "node-a",
+                "target_host": "root@10.0.0.1",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.1] tail 1 lines from /sf/log/app.log:\n"
+                    "2026-03-20 10:21:03 timeout while connecting to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+            {
+                "target_id": "node-b",
+                "target_host": "root@10.0.0.2",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.2] tail 1 lines from /sf/log/app.log:\n"
+                    "2026-03-20 10:21:04 timeout while connecting to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+        ],
+    )
+
+    artifact = aggregation.build_cross_target_timeline_artifact(
+        target_scope="node-a,node-b",
+    )
+
+    assert isinstance(artifact, TimelineArtifact)
+    assert [event.scope for event in artifact.events] == ["near_shared"]
+    assert [event.target for event in artifact.events] == ["node-a,node-b"]
+    markdown = format_timeline_artifact(artifact)
+    assert "## Coverage Note" in markdown
+    assert "## Events" in markdown
+    assert "timeout while connecting to storage backend" in markdown
+
+
+@pytest.mark.parametrize(
+    "results",
+    [
+        [
+            {
+                "target_id": "node-a",
+                "target_host": "root@10.0.0.1",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.1] tail 1 lines from /sf/log/app.log:\n"
+                    "timeout while connecting to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            }
+        ],
+        [
+            {
+                "target_id": "node-a",
+                "target_host": "root@10.0.0.1",
+                "status": "error",
+                "content": "",
+                "error": "ssh timeout",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            }
+        ],
+    ],
+)
+def test_cross_target_timeline_artifact_output_returns_none_when_no_timestamped_log_events_exist(
+    results: list[dict[str, object]],
+) -> None:
+    aggregation = aggregate_multi_target_results(tool_name="read_log_tail", results=results)
+
+    artifact = aggregation.build_cross_target_timeline_artifact(target_scope="node-a")
+
+    assert artifact is None
+
+
+@pytest.mark.parametrize(
+    ("tool_name", "results"),
+    [
+        (
+            "service_status",
+            [
+                {
+                    "target_id": "node-a",
+                    "target_host": "root@10.0.0.1",
+                    "status": "ok",
+                    "content": "[target=root@10.0.0.1] service_status(nginx)\nactive (running)",
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+                },
+                {
+                    "target_id": "node-b",
+                    "target_host": "root@10.0.0.2",
+                    "status": "ok",
+                    "content": "[target=root@10.0.0.2] service_status(nginx)\ninactive (dead)",
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+                },
+            ],
+        ),
+        (
+            "process_snapshot",
+            [
+                {
+                    "target_id": "node-a",
+                    "target_host": "root@10.0.0.1",
+                    "status": "ok",
+                    "content": "[target=root@10.0.0.1] process_snapshot(nginx)\nactive (running)",
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+                },
+                {
+                    "target_id": "node-b",
+                    "target_host": "root@10.0.0.2",
+                    "status": "ok",
+                    "content": "[target=root@10.0.0.2] process_snapshot(nginx)\ninactive (dead)",
+                    "error": "",
+                    "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+                },
+            ],
+        ),
+    ],
+)
+def test_cross_target_timeline_artifact_output_keeps_state_tools_out_of_timeline_path(
+    tool_name: str,
+    results: list[dict[str, object]],
+) -> None:
+    aggregation = aggregate_multi_target_results(tool_name=tool_name, results=results)
+
+    artifact = aggregation.build_cross_target_timeline_artifact(target_scope="node-a,node-b")
+
+    assert artifact is None
 
 
 @pytest.mark.parametrize(

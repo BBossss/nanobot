@@ -126,7 +126,7 @@ python3 -m pytest tests/test_log_timeline.py -v
 
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add nanobot/agent/timeline.py tests/test_log_timeline.py
@@ -140,7 +140,7 @@ git commit -m "feat: add cross-target timeline artifact builder"
 **Files:**
 - Modify: `tests/test_multi_target_troubleshooting.py`
 
-- [ ] **Step 1: Write failing tests for cross-target log timeline integration**
+- [x] **Step 1: Write failing tests for cross-target log timeline integration**
 
 Add focused tests proving that log-oriented multi-target evidence can now produce a cross-target `timeline_artifact` from the aggregation path.
 
@@ -150,14 +150,14 @@ Cover:
 - one `read_log_tail` case with shared or near-shared timestamped evidence
 - emitted artifact remains valid Markdown timeline output
 
-- [ ] **Step 2: Write failing tests proving state tools do not enter cross-target timeline building**
+- [x] **Step 2: Write failing tests proving state tools do not enter cross-target timeline building**
 
 Add focused tests proving:
 
 - `service_status` and `process_snapshot` continue to stay out of the timeline-artifact path in this phase
 - non-log multi-target rendering behavior remains unchanged
 
-- [ ] **Step 3: Run focused multi-target timeline integration tests to verify failure**
+- [x] **Step 3: Run focused multi-target timeline integration tests to verify failure**
 
 Run:
 
@@ -173,7 +173,7 @@ Expected: FAIL because the multi-target path does not yet expose the new artifac
 - Modify: `nanobot/agent/multi_target.py`
 - Modify: `tests/test_multi_target_troubleshooting.py`
 
-- [ ] **Step 1: Add the minimal integration point in the multi-target log path**
+- [x] **Step 1: Add the minimal integration point in the multi-target log path**
 
 Update the log-oriented multi-target path so it can:
 
@@ -187,7 +187,7 @@ Keep the design narrow:
 - no replacement of existing summaries
 - no generic report-consumption path yet
 
-- [ ] **Step 2: Keep the user-visible output contract conservative**
+- [x] **Step 2: Keep the user-visible output contract conservative**
 
 Choose one stable integration output for this phase and hold it consistent in tests.
 
@@ -198,7 +198,7 @@ Recommended direction:
 
 If you choose to surface the artifact directly in this phase, keep it clearly bounded and do not break current per-target rendering tests.
 
-- [ ] **Step 3: Run focused multi-target timeline integration tests**
+- [x] **Step 3: Run focused multi-target timeline integration tests**
 
 Run:
 
@@ -208,7 +208,7 @@ python3 -m pytest tests/test_multi_target_troubleshooting.py -k "cross_target_ti
 
 Expected: PASS
 
-- [ ] **Step 4: Run the full multi-target troubleshooting test file**
+- [x] **Step 4: Run the full multi-target troubleshooting test file**
 
 Run:
 

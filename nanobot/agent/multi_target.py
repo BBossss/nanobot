@@ -12,7 +12,12 @@ from nanobot.agent.root_cause_candidates import (
     map_root_cause_candidates,
     render_candidate_root_causes,
 )
-from nanobot.agent.timeline import build_log_timeline, extract_log_events
+from nanobot.agent.timeline import (
+    TimelineArtifact,
+    build_cross_target_timeline_artifact,
+    build_log_timeline,
+    extract_log_events,
+)
 
 SUPPORTED_MULTI_TARGET_TOOLS = {
     "service_status",
@@ -69,6 +74,35 @@ class MultiTargetAggregation:
         if not isinstance(item, str):
             return False
         return item in self._rendered_summary
+
+    def build_cross_target_timeline_artifact(
+        self,
+        *,
+        incident: str | None = None,
+        target_scope: str | None = None,
+    ) -> TimelineArtifact | None:
+        """Build a stable cross-target timeline artifact for log-oriented evidence."""
+        if self.tool_name not in LOG_MULTI_TARGET_TOOLS:
+            return None
+        if target_scope is None:
+            target_scope = ",".join(self.ok_targets) if self.ok_targets else None
+        artifact = build_cross_target_timeline_artifact(
+            tool_name=self.tool_name,
+            results=[
+                {
+                    "target_id": result.target_id,
+                    "target_host": result.target_host,
+                    "status": result.status,
+                    "content": result.content,
+                    "error": result.error,
+                    "observed_at": result.observed_at,
+                }
+                for result in self.per_target_results
+            ],
+            incident=incident,
+            target_scope=target_scope,
+        )
+        return artifact if artifact.events else None
 
 
 def supports_multi_target_tool(name: str) -> bool:
