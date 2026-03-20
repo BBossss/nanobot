@@ -26,7 +26,7 @@
 **Files:**
 - Modify: `tests/test_multi_target_troubleshooting.py`
 
-- [ ] **Step 1: Write failing tests for log-oriented aggregation**
+- [x] **Step 1: Write failing tests for log-oriented aggregation**
 
 Add focused tests for `search_log` / `read_log_tail` style results proving:
 
@@ -39,7 +39,7 @@ Add focused tests for `search_log` / `read_log_tail` style results proving:
 
 Use representative raw collected result dicts shaped like the current `execute_multi_target_tool(...)` path.
 
-- [ ] **Step 2: Write failing tests for state-oriented aggregation**
+- [x] **Step 2: Write failing tests for state-oriented aggregation**
 
 Add focused tests for `service_status` / `process_snapshot` style results proving:
 
@@ -48,7 +48,7 @@ Add focused tests for `service_status` / `process_snapshot` style results provin
 - target ordering in `target_ids` remains stable and deterministic
 - each `per_target_results` entry preserves the expected stable fields: `target_id`, `target_host`, `status`, `content`, `error`, `observed_at`
 
-- [ ] **Step 3: Run the focused aggregation tests to verify failure**
+- [x] **Step 3: Run the focused aggregation tests to verify failure**
 
 Run:
 
@@ -58,7 +58,7 @@ python3 -m pytest tests/test_multi_target_troubleshooting.py -k "aggregation or 
 
 Expected: FAIL because the stable aggregation contract does not exist yet.
 
-- [ ] **Step 4: Commit the red test slice if it is isolated and readable**
+- [x] **Step 4: Commit the red test slice if it is isolated and readable**
 
 ```bash
 git add tests/test_multi_target_troubleshooting.py
@@ -73,7 +73,7 @@ If you do not want a red commit on the branch, skip the commit and proceed direc
 - Modify: `nanobot/agent/multi_target.py`
 - Modify: `tests/test_multi_target_troubleshooting.py`
 
-- [ ] **Step 1: Add the minimal stable aggregation structure**
+- [x] **Step 1: Add the minimal stable aggregation structure**
 
 Implement the smallest internal structure needed to represent:
 
@@ -87,7 +87,7 @@ Implement the smallest internal structure needed to represent:
 
 Keep the first version local to `nanobot/agent/multi_target.py`. If dataclasses help, keep them focused and private to this module.
 
-- [ ] **Step 2: Lock the stable nested field shapes**
+- [x] **Step 2: Lock the stable nested field shapes**
 
 Implement the smallest nested structures needed so the tests can rely on stable fields for:
 
@@ -98,7 +98,7 @@ Implement the smallest nested structures needed so the tests can rely on stable 
 
 Do not add extra taxonomy or optional fields beyond the approved spec.
 
-- [ ] **Step 3: Add tool-aware aggregation helpers**
+- [x] **Step 3: Add tool-aware aggregation helpers**
 
 Implement minimal helpers that:
 
@@ -109,7 +109,7 @@ Implement minimal helpers that:
 
 Do not broaden the supported tool set in this phase.
 
-- [ ] **Step 4: Run the focused aggregation tests**
+- [x] **Step 4: Run the focused aggregation tests**
 
 Run:
 
@@ -119,7 +119,7 @@ python3 -m pytest tests/test_multi_target_troubleshooting.py -k "aggregation or 
 
 Expected: PASS
 
-- [ ] **Step 5: Run a broader multi-target troubleshooting slice**
+- [x] **Step 5: Run a broader multi-target troubleshooting slice**
 
 Run:
 
@@ -129,7 +129,7 @@ python3 -m pytest tests/test_multi_target_troubleshooting.py -v
 
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add nanobot/agent/multi_target.py tests/test_multi_target_troubleshooting.py
@@ -143,7 +143,7 @@ git commit -m "feat: add stable multi-target aggregation structure"
 **Files:**
 - Modify: `tests/test_multi_target_troubleshooting.py`
 
-- [ ] **Step 1: Write failing formatter tests for grouped summary rendering**
+- [x] **Step 1: Write failing formatter tests for grouped summary rendering**
 
 Add focused tests proving the rendered summary:
 
@@ -152,7 +152,7 @@ Add focused tests proving the rendered summary:
 - renders `### Shared Findings`, `### Local Findings`, and `### Failed Targets` only when present
 - preserves raw per-target results under `## Per-Target Results`
 
-- [ ] **Step 2: Write failing formatter tests for both supported tool families**
+- [x] **Step 2: Write failing formatter tests for both supported tool families**
 
 Add focused tests proving rendering remains stable for:
 
@@ -161,7 +161,7 @@ Add focused tests proving rendering remains stable for:
 
 The tests should confirm that both tool families render grouped findings from the same stable aggregation contract, without falling back to tool-specific inline string assembly.
 
-- [ ] **Step 3: Write failing formatter tests for empty-section omission**
+- [x] **Step 3: Write failing formatter tests for empty-section omission**
 
 Add focused tests proving:
 
@@ -169,7 +169,7 @@ Add focused tests proving:
 - no `Local Findings` section is rendered when no local findings exist
 - no `Failed Targets` section is rendered when all targets succeed
 
-- [ ] **Step 4: Run the focused formatter tests to verify failure**
+- [x] **Step 4: Run the focused formatter tests to verify failure**
 
 Run:
 
@@ -185,7 +185,7 @@ Expected: FAIL because rendering is still assembled inline from collected text.
 - Modify: `nanobot/agent/multi_target.py`
 - Modify: `tests/test_multi_target_troubleshooting.py`
 
-- [ ] **Step 1: Add a formatter for the stable aggregation structure**
+- [x] **Step 1: Add a formatter for the stable aggregation structure**
 
 Implement a formatter that renders the grouped summary from the aggregation object and appends the raw per-target results after it.
 
@@ -196,7 +196,7 @@ Keep rendering rules conservative:
 - raw per-target results preserved below
 - no forced empty sections
 
-- [ ] **Step 2: Keep formatter coverage stable across log and state tool families**
+- [x] **Step 2: Keep formatter coverage stable across log and state tool families**
 
 Ensure the formatter path handles both:
 
@@ -205,7 +205,7 @@ Ensure the formatter path handles both:
 
 without introducing separate incompatible rendering contracts.
 
-- [ ] **Step 3: Route `execute_multi_target_tool(...)` through aggregation then formatting**
+- [x] **Step 3: Route `execute_multi_target_tool(...)` through aggregation then formatting**
 
 Update `execute_multi_target_tool(...)` so it:
 
@@ -215,7 +215,7 @@ Update `execute_multi_target_tool(...)` so it:
 
 Do not change confirmation gating or target resolution behavior.
 
-- [ ] **Step 4: Run the focused formatter tests**
+- [x] **Step 4: Run the focused formatter tests**
 
 Run:
 
@@ -225,7 +225,7 @@ python3 -m pytest tests/test_multi_target_troubleshooting.py -k "formatter or re
 
 Expected: PASS
 
-- [ ] **Step 5: Run the full multi-target troubleshooting test file**
+- [x] **Step 5: Run the full multi-target troubleshooting test file**
 
 Run:
 
@@ -235,7 +235,7 @@ python3 -m pytest tests/test_multi_target_troubleshooting.py -v
 
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add nanobot/agent/multi_target.py tests/test_multi_target_troubleshooting.py
@@ -249,17 +249,17 @@ git commit -m "feat: render multi-target summaries from aggregation"
 **Files:**
 - Modify: `docs/superpowers/plans/2026-03-20-multi-target-aggregation.md`
 
-- [ ] **Step 1: Run focused multi-target and troubleshooting regressions**
+- [x] **Step 1: Run focused multi-target and troubleshooting regressions**
 
 Run:
 
 ```bash
-python3 -m pytest tests/test_multi_target_troubleshooting.py tests/test_agentloop_troubleshooting_flow.py -k "multi_target or target_expansion or target confirmation or aggregation or summary" -v
+python3 -m pytest tests/test_multi_target_troubleshooting.py tests/test_agentloop_troubleshooting_flow.py -k "multi_target or target_expansion or target_confirmation or aggregation or summary" -v
 ```
 
 Expected: PASS
 
-- [ ] **Step 2: Run the full multi-target and workflow slices**
+- [x] **Step 2: Run the full multi-target and workflow slices**
 
 Run:
 
@@ -269,7 +269,7 @@ python3 -m pytest tests/test_multi_target_troubleshooting.py tests/test_agentloo
 
 Expected: PASS
 
-- [ ] **Step 3: Optionally run the full suite if no unrelated failures are known**
+- [x] **Step 3: Optionally run the full suite if no unrelated failures are known**
 
 Run:
 
@@ -279,7 +279,7 @@ python3 -m pytest -q
 
 Expected: PASS, or document any unrelated pre-existing failure clearly.
 
-- [ ] **Step 4: Mark completed plan checkboxes**
+- [x] **Step 4: Mark completed plan checkboxes**
 
 Update this plan to reflect actual execution status.
 
