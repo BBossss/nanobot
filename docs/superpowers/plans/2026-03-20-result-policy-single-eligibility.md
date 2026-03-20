@@ -165,7 +165,7 @@ git commit -m "refactor: collapse result policy eligibility onto output kinds"
 **Files:**
 - Modify: `docs/superpowers/plans/2026-03-20-result-policy-single-eligibility.md`
 
-- [ ] **Step 1: Run the focused result-policy and troubleshooting regressions**
+- [x] **Step 1: Run the focused result-policy and troubleshooting regressions**
 
 Run:
 
@@ -175,7 +175,7 @@ python3 -m pytest tests/test_result_policy.py tests/test_agentloop_investigation
 
 Expected: PASS
 
-- [ ] **Step 2: Run the full result-policy file**
+- [x] **Step 2: Run the full result-policy file**
 
 Run:
 
@@ -185,7 +185,7 @@ python3 -m pytest tests/test_result_policy.py -v
 
 Expected: PASS
 
-- [ ] **Step 3: Optionally run the full suite if no unrelated failures are known**
+- [x] **Step 3: Optionally run the full suite if no unrelated failures are known**
 
 Run:
 
@@ -195,11 +195,11 @@ python3 -m pytest -q
 
 Expected: PASS, or document any unrelated pre-existing failure clearly.
 
-- [ ] **Step 4: Mark completed plan checkboxes**
+- [x] **Step 4: Mark completed plan checkboxes**
 
 Update this plan to reflect what actually ran and what was committed.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/superpowers/plans/2026-03-20-result-policy-single-eligibility.md
