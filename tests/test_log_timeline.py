@@ -1,5 +1,7 @@
 from datetime import datetime
 
+import pytest
+
 from nanobot.agent.timeline import (
     TimelineArtifact,
     TimelineArtifactEvent,
@@ -274,6 +276,42 @@ def test_format_timeline_artifact_raises_on_empty_events() -> None:
         assert "at least one event" in str(exc)
     else:
         raise AssertionError("expected format_timeline_artifact to reject empty events")
+
+
+@pytest.mark.parametrize(
+    ("field_name", "field_value", "expected_message"),
+    [
+        ("timestamp_normalized", " ", "timestamp_normalized"),
+        ("event", "", "event"),
+        ("evidence", " ", "evidence"),
+    ],
+)
+def test_format_timeline_artifact_rejects_blank_required_event_fields(
+    field_name: str,
+    field_value: str,
+    expected_message: str,
+) -> None:
+    kwargs = {
+        "timestamp_normalized": "2026-03-18T10:21:03",
+        "timestamp_raw": "2026-03-18 10:21:03",
+        "event": "service started",
+        "evidence": "2026-03-18 10:21:03 service started",
+        "target": "node-a",
+        "source": "read_log_tail",
+    }
+    kwargs[field_name] = field_value
+
+    artifact = TimelineArtifact(
+        incident="storage timeout incident",
+        target="node-a",
+        window_start=None,
+        window_end=None,
+        coverage_note=None,
+        events=[TimelineArtifactEvent(**kwargs)],
+    )
+
+    with pytest.raises(ValueError, match=expected_message):
+        format_timeline_artifact(artifact)
 
 
 def test_format_timeline_artifact_renders_window_start_only() -> None:

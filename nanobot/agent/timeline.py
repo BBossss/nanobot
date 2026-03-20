@@ -113,6 +113,8 @@ def format_timeline_artifact(artifact: TimelineArtifact) -> str:
     """Render a stable incident timeline artifact as Markdown."""
     if not artifact.events:
         raise ValueError("timeline artifacts must contain at least one event")
+    for event in artifact.events:
+        _validate_timeline_artifact_event(event)
     lines: list[str] = ["# Timeline"]
     if artifact.incident:
         lines.append("")
@@ -145,6 +147,17 @@ def format_timeline_artifact(artifact: TimelineArtifact) -> str:
         lines.append(artifact.coverage_note)
 
     return "\n".join(lines).rstrip()
+
+
+def _validate_timeline_artifact_event(event: TimelineArtifactEvent) -> None:
+    if not event.timestamp_normalized.strip():
+        raise ValueError("timeline artifact event requires timestamp_normalized")
+    if not event.timestamp_raw.strip():
+        raise ValueError("timeline artifact event requires timestamp_raw")
+    if not event.event.strip():
+        raise ValueError("timeline artifact event requires event")
+    if not event.evidence.strip():
+        raise ValueError("timeline artifact event requires evidence")
 
 
 def _parse_timestamp(line: str) -> datetime | None:
