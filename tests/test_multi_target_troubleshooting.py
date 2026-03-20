@@ -233,6 +233,171 @@ def test_aggregate_multi_target_results_omits_empty_sections_when_all_targets_sh
     assert "### Failed Targets" not in summary
 
 
+def test_timeline_summary_from_search_log_shared_plus_local_events() -> None:
+    aggregation = aggregate_multi_target_results(
+        tool_name="search_log",
+        results=[
+            {
+                "target_id": "node-a",
+                "target_host": "root@10.0.0.1",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.1] Found matches in /sf/log/app.log:\n"
+                    "2026-03-20 10:21:03 timeout while connecting to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+            {
+                "target_id": "node-b",
+                "target_host": "root@10.0.0.2",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.2] Found matches in /sf/log/app.log:\n"
+                    "2026-03-20 10:21:03 timeout while connecting to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+            {
+                "target_id": "node-c",
+                "target_host": "root@10.0.0.3",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.3] Found matches in /sf/log/app.log:\n"
+                    "2026-03-20 10:22:11 permission denied writing to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 22, 30),
+            },
+        ],
+    )
+
+    summary = aggregation.build_cross_target_timeline_summary()
+
+    assert summary == (
+        "时间线补充：最早在 10:21:03 由 node-a,node-b 出现同类超时；"
+        "10:22:11 起 node-c 出现本地 permission denied。"
+    )
+
+
+def test_timeline_summary_from_read_log_tail_near_shared_first_cluster() -> None:
+    aggregation = aggregate_multi_target_results(
+        tool_name="read_log_tail",
+        results=[
+            {
+                "target_id": "node-a",
+                "target_host": "root@10.0.0.1",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.1] tail 1 lines from /sf/log/app.log:\n"
+                    "2026-03-20 10:21:03 timeout while connecting to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+            {
+                "target_id": "node-b",
+                "target_host": "root@10.0.0.2",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.2] tail 1 lines from /sf/log/app.log:\n"
+                    "2026-03-20 10:21:04 timeout while connecting to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+        ],
+    )
+
+    summary = aggregation.build_cross_target_timeline_summary()
+
+    assert summary == (
+        "时间线补充：最早在 10:21:03 由 node-a 出现超时，"
+        "node-b 随后近同时出现同类异常。"
+    )
+
+
+def test_timeline_summary_returns_none_when_no_timestamped_log_events_exist() -> None:
+    aggregation = aggregate_multi_target_results(
+        tool_name="search_log",
+        results=[
+            {
+                "target_id": "node-a",
+                "target_host": "root@10.0.0.1",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.1] Found 2 match(es) in /sf/log/app.log:\n"
+                    "timeout while connecting to storage backend\n"
+                    "worker exited unexpectedly"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+            {
+                "target_id": "node-b",
+                "target_host": "root@10.0.0.2",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.2] Found 1 match(es) in /sf/log/app.log:\n"
+                    "permission denied writing to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+        ],
+    )
+
+    assert aggregation.build_cross_target_timeline_summary() is None
+
+
+def test_timeline_summary_returns_none_for_non_log_tools() -> None:
+    aggregation = aggregate_multi_target_results(
+        tool_name="service_status",
+        results=[
+            {
+                "target_id": "node-a",
+                "target_host": "root@10.0.0.1",
+                "status": "ok",
+                "content": "[target=root@10.0.0.1] service_status(nginx)\nactive (running)",
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+            {
+                "target_id": "node-b",
+                "target_host": "root@10.0.0.2",
+                "status": "ok",
+                "content": "[target=root@10.0.0.2] service_status(nginx)\ninactive (dead)",
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+        ],
+    )
+
+    assert aggregation.build_cross_target_timeline_summary() is None
+
+
+def test_timeline_summary_returns_none_when_timeline_body_is_effectively_single_target() -> None:
+    aggregation = aggregate_multi_target_results(
+        tool_name="search_log",
+        results=[
+            {
+                "target_id": "node-a",
+                "target_host": "root@10.0.0.1",
+                "status": "ok",
+                "content": (
+                    "[target=root@10.0.0.1] Found matches in /sf/log/app.log:\n"
+                    "2026-03-20 10:21:03 timeout while connecting to storage backend"
+                ),
+                "error": "",
+                "observed_at": datetime(2026, 3, 20, 10, 21, 30),
+            },
+        ],
+    )
+
+    assert aggregation.build_cross_target_timeline_summary() is None
+
+
 @pytest.mark.asyncio
 async def test_execute_multi_target_tool_keeps_grouped_summary_and_raw_per_target_results() -> None:
     async def _exec(name: str, params: dict[str, object]) -> str:

@@ -104,6 +104,59 @@ class MultiTargetAggregation:
         )
         return artifact if artifact.events else None
 
+    def build_cross_target_timeline_summary(
+        self,
+        *,
+        incident: str | None = None,
+        target_scope: str | None = None,
+    ) -> str | None:
+        """Render a short cross-target timeline conclusion from log evidence."""
+        if self.tool_name not in LOG_MULTI_TARGET_TOOLS:
+            return None
+        artifact = self.build_cross_target_timeline_artifact(
+            incident=incident,
+            target_scope=target_scope,
+        )
+        if artifact is None or not artifact.events:
+            return None
+
+        first_event = artifact.events[0]
+        if first_event.scope not in {"shared", "near_shared"}:
+            return None
+
+        first_targets = _split_timeline_targets(first_event.target)
+        if len(first_targets) < 2:
+            return None
+
+        first_time = _format_summary_timestamp(first_event.timestamp_normalized)
+        first_phrase = _summarize_timeline_keyword(first_event.event)
+
+        if first_event.scope == "shared":
+            summary = (
+                f"时间线补充：最早在 {first_time} 由 {','.join(first_targets)} "
+                f"出现同类{first_phrase}"
+            )
+        else:
+            summary = (
+                f"时间线补充：最早在 {first_time} 由 {first_targets[0]} "
+                f"出现{first_phrase}，{ '、'.join(first_targets[1:]) } "
+                f"随后近同时出现同类异常"
+            )
+
+        later_local_event = _find_first_later_local_event(artifact.events[1:])
+        if later_local_event is None:
+            return summary + "。"
+
+        later_time = _format_summary_timestamp(later_local_event.timestamp_normalized)
+        later_targets = _split_timeline_targets(later_local_event.target)
+        later_phrase = _summarize_timeline_keyword(later_local_event.event)
+        if not later_targets:
+            return summary + "。"
+        return (
+            f"{summary}；{later_time} 起 {','.join(later_targets)} "
+            f"出现本地 {later_phrase}。"
+        )
+
 
 def supports_multi_target_tool(name: str) -> bool:
     """Return whether the tool should fan out across confirmed targets."""
@@ -321,3 +374,41 @@ def _build_candidate_root_cause_summary(lines: list[str]) -> str:
     if "当前证据不足以形成候选根因" in rendered:
         return ""
     return rendered
+
+
+def _split_timeline_targets(target: str | None) -> list[str]:
+    if not target:
+        return []
+    return [item.strip() for item in target.split(",") if item.strip()]
+
+
+def _find_first_later_local_event(
+    events: list[Any],
+) -> Any | None:
+    for event in events:
+        if getattr(event, "scope", None) == "local":
+            return event
+    return None
+
+
+def _format_summary_timestamp(timestamp_normalized: str | None) -> str:
+    if not timestamp_normalized:
+        return ""
+    try:
+        return datetime.fromisoformat(timestamp_normalized).strftime("%H:%M:%S")
+    except ValueError:
+        match = re.search(r"(\d{2}:\d{2}:\d{2})", timestamp_normalized)
+        if match is not None:
+            return match.group(1)
+    return timestamp_normalized
+
+
+def _summarize_timeline_keyword(text: str) -> str:
+    lowered = text.lower()
+    if "timeout" in lowered or "超时" in text:
+        return "超时"
+    if "permission denied" in lowered:
+        return "permission denied"
+    if "connection refused" in lowered:
+        return "connection refused"
+    return text.strip() or "异常"
