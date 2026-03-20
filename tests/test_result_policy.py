@@ -312,6 +312,30 @@ def test_candidate_eligibility_matches_output_kind_when_user_content_is_present(
     )
 
 
+def test_candidate_eligibility_forwards_messages_when_user_content_is_present(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_messages = [{"role": "tool", "content": "evidence"}]
+    captured: dict[str, object] = {}
+
+    def fake_classify_output_kind(**kwargs: object) -> str:
+        captured.update(kwargs)
+        return workflow_result_policy.OUTPUT_KIND_TROUBLESHOOTING_REPLY
+
+    monkeypatch.setattr(workflow_result_policy, "classify_output_kind", fake_classify_output_kind)
+
+    assert (
+        workflow_result_policy.is_troubleshooting_result_candidate(
+            "已确认事实：日志里连续出现连接超时。当前倾向：数据库连接池耗尽。",
+            user_content="帮我判断这个服务为什么报错",
+            messages=session_messages,
+        )
+        is True
+    )
+    assert captured["messages"] is session_messages
+    assert captured["user_content"] == "帮我判断这个服务为什么报错"
+
+
 @pytest.mark.parametrize(
     ("content", "expected"),
     [

@@ -360,12 +360,11 @@ def is_troubleshooting_result_candidate(
     messages: list[dict[str, Any]] | None = None,
 ) -> bool:
     """Return whether a troubleshooting reply should be reshaped in evidence-first mode."""
-    del messages  # Reserved for future evidence-aware fallback refinements.
     if user_content is not None:
         kind = classify_output_kind(
             user_content=user_content,
             final_content=content,
-            messages=None,
+            messages=messages,
         )
     else:
         kind = _classify_output_kind_from_content_only(content)
