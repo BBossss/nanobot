@@ -6,6 +6,7 @@ import pytest
 
 from nanobot.agent.loop import AgentLoop
 from nanobot.agent.workflow import result_policy as workflow_result_policy
+from nanobot.bus.events import InboundMessage
 from nanobot.bus.queue import MessageBus
 from nanobot.config.schema import ExecToolConfig, TargetingConfig
 from nanobot.providers.base import LLMResponse, ToolCallRequest
@@ -688,6 +689,76 @@ async def test_workflow_result_mode_inserts_timeline_summary_for_multi_target_tr
         )
         == workflow_result_policy.OUTPUT_KIND_TROUBLESHOOTING_REPLY
     )
+
+
+@pytest.mark.asyncio
+async def test_system_message_path_inserts_timeline_summary_for_multi_target_troubleshooting_reply(
+    tmp_path: Path,
+) -> None:
+    targeting = TargetingConfig.model_validate(
+        {
+            "targets": [
+                {"id": "node-a", "target": "root@10.0.0.1", "labels": ["storage"]},
+                {"id": "node-b", "target": "root@10.0.0.2", "labels": ["storage"]},
+                {"id": "node-c", "target": "root@10.0.0.3", "labels": ["storage"]},
+            ],
+            "groups": [{"name": "storage-cluster", "targets": ["node-a", "node-b", "node-c"]}],
+        }
+    )
+    loop = _make_loop(tmp_path, targeting=targeting)
+    loop.provider.chat = AsyncMock(
+        side_effect=[
+            LLMResponse(
+                content="先看日志。",
+                tool_calls=[ToolCallRequest(id="1", name="search_log", arguments={"pattern": "timeout"})],
+            ),
+            LLMResponse(
+                content="已确认事实：日志里持续报错。根因已确认，就是存储后端连接不稳定。",
+                tool_calls=[],
+            ),
+        ]
+    )
+    loop.tools.execute = AsyncMock(
+        side_effect=[
+            (
+                "[target=root@10.0.0.1] Found matches in /sf/log/app.log:\n"
+                "2026-03-20 10:21:03 timeout while connecting to storage backend"
+            ),
+            (
+                "[target=root@10.0.0.2] Found matches in /sf/log/app.log:\n"
+                "2026-03-20 10:21:03 timeout while connecting to storage backend"
+            ),
+            (
+                "[target=root@10.0.0.3] Found matches in /sf/log/app.log:\n"
+                "2026-03-20 10:22:11 permission denied writing to storage backend"
+            ),
+        ]
+    )
+    session = loop.sessions.get_or_create("cli:background")
+    session.metadata["expansion_confirmed"] = True
+    session.metadata["resolved_targets"] = [
+        {"id": "node-a", "target": "root@10.0.0.1", "labels": ["storage"]},
+        {"id": "node-b", "target": "root@10.0.0.2", "labels": ["storage"]},
+        {"id": "node-c", "target": "root@10.0.0.3", "labels": ["storage"]},
+    ]
+    session.metadata["workflow_result_mode"] = "evidence_first"
+    session.metadata["workflow_result_mode_reason"] = "先别急着下结论"
+    loop.sessions.save(session)
+
+    outbound = await loop._process_message(
+        InboundMessage(
+            channel="system",
+            sender_id="background",
+            chat_id="cli:background",
+            content="帮我判断这个服务为什么报错",
+        )
+    )
+
+    assert outbound is not None
+    assert outbound.channel == "cli"
+    assert outbound.chat_id == "background"
+    assert "时间线补充：" in outbound.content
+    assert "当前倾向" in outbound.content
 
 
 @pytest.mark.asyncio

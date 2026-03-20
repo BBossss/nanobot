@@ -660,7 +660,25 @@ class AgentLoop:
                     metadata=msg.metadata,
                 ),
             )
-            final_content, _, all_msgs = await self._run_agent_loop(messages, session=session)
+            timeline_summary: str | None = None
+
+            async def _capture_timeline_summary(summary: str | None) -> None:
+                nonlocal timeline_summary
+                if summary:
+                    timeline_summary = summary
+
+            final_content, _, all_msgs = await self._run_agent_loop(
+                messages,
+                session=session,
+                on_timeline_summary=_capture_timeline_summary,
+            )
+            final_content = self._shape_evidence_first_result(
+                session=session,
+                user_content=msg.content,
+                final_content=final_content,
+                messages=all_msgs,
+                timeline_summary=timeline_summary,
+            )
             self._save_turn(session, all_msgs, 1 + len(history))
             self.sessions.save(session)
             return OutboundMessage(channel=channel, chat_id=chat_id,
