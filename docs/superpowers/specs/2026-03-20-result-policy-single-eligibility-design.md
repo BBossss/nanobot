@@ -90,13 +90,24 @@ That is the contract future phases should extend, not bypass.
 
 However, it should become a compatibility shell, not a second policy engine.
 
+Its signature should expand to accept optional context:
+
+- `is_troubleshooting_result_candidate(content, user_content=None, messages=None)`
+
 It should:
 
 - accept content as it does today
-- derive kind using the same internal path used by `shape_evidence_first_result(...)`
+- use the same classification path as `shape_evidence_first_result(...)` whenever `user_content` is available
 - return the result of `is_output_kind_rewrite_eligible(...)`
 
-If the wrapper needs lightweight content-only classification because it lacks `user_content`, that logic must still flow through the same kind-to-eligibility contract rather than reintroducing artifact-vs-troubleshooting policy rules inline.
+When `user_content` is unavailable, the wrapper may use a narrow content-only fallback classifier, but that fallback must:
+
+- exist only to support compatibility callers that do not have request context
+- return output kinds, not direct rewrite decisions
+- flow through the same `kind -> eligibility` contract as the main path
+- stay conservative for ambiguous content
+
+This means there are still two inference modes, but only one eligibility contract.
 
 ## Implementation Shape
 
@@ -117,7 +128,8 @@ Inside `shape_evidence_first_result(...)`:
 Inside `is_troubleshooting_result_candidate(...)`:
 
 - remove direct artifact/troubleshooting heuristics as policy logic
-- delegate to the same eligibility contract
+- when context is present, delegate to the same classification path used by the shaper
+- when context is absent, use the compatibility fallback classifier and still delegate through the same eligibility contract
 
 ## Testing Strategy
 
@@ -130,7 +142,12 @@ Required coverage:
   - inspection artifact
   - report artifact
   - case artifact
+  - timeline artifact
+  - root-cause candidate artifact
   - generic reply
+- focused policy tests showing the compatibility wrapper behaves correctly both:
+  - with `user_content` present
+  - without `user_content`, using the content-only fallback path
 - existing evidence-first shaping tests stay green
 - existing artifact-bypass tests stay green
 - existing markdown troubleshooting summary shaping tests stay green
@@ -154,7 +171,8 @@ The wrapper currently accepts only `content`. If the new implementation quietly 
 
 Mitigation:
 
-- keep the wrapper content-oriented
+- define the wrapper signature to accept optional context explicitly
+- require parity tests for both contextual and content-only calls
 - if a content-only classifier is needed, keep it narrow and eligibility-focused
 
 ### Premature architecture growth
