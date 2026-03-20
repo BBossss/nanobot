@@ -100,9 +100,23 @@ The internal structure does not need a new public API yet, but the spec should d
 
 ## Minimal Field Structure
 
+The first stable structure should include both artifact-level metadata and per-event entries.
+
+Artifact-level fields:
+
+- `incident` optional
+- `target` optional
+- `window_start` optional
+- `window_end` optional
+- `coverage_note` optional
+- `events` required
+
+The `events` field contains the ordered timeline entries.
+
 Each timeline event should support the following fields:
 
-- `timestamp`
+- `timestamp_normalized`
+- `timestamp_raw`
 - `event`
 - `evidence`
 - `target` optional
@@ -110,11 +124,20 @@ Each timeline event should support the following fields:
 
 Field intent:
 
-- `timestamp`: the explicit incident/event time carried by the source evidence
+- `timestamp_normalized`: normalized event time used for stable ordering and display
+- `timestamp_raw`: original time text as carried by the source evidence
 - `event`: short human-readable incident event summary
 - `evidence`: concrete supporting evidence, ideally including citation-like source text
 - `target`: node/host/target when applicable
 - `source`: source channel such as log path, tool output, or evidence reference
+
+Normalization rule for v1:
+
+- when a timeline event is admitted into the artifact, it must have both `timestamp_raw` and `timestamp_normalized`
+- `timestamp_normalized` should use ISO-8601
+- if the source evidence does not support a stable normalized timestamp, the event must not enter the artifact
+
+Version 1 does not require timezone conversion beyond what current parsing already supports, but the normalized timestamp must be explicit enough to support stable ordering inside the artifact.
 
 Version 1 should not require more structure than this.
 
@@ -157,6 +180,8 @@ Rules:
 - every event entry must include `Timestamp`, `Event`, and `Evidence`
 - `Target` and `Source` are optional
 - a short `Coverage Note` section is allowed and recommended
+- `Timestamp` in Markdown should display the normalized timestamp
+- raw source time should remain preserved in the structured event and may appear inside `Evidence`
 
 ## Marker And Classification Rules
 
@@ -168,9 +193,18 @@ The classifier should recognize timeline artifacts when there is explicit timeli
 - heading `# Event Timeline`
 - frontmatter markers like `kind: timeline`, `type: timeline`, or `output_kind: timeline`
 
+But timeline intent markers alone are not sufficient for a stable artifact classification.
+
+To classify as a stable `timeline_artifact`, content should also include a valid event body shape:
+
+- a canonical event section such as `## Events`, or a clearly structured equivalent
+- at least one event entry containing `Timestamp`, `Event`, and `Evidence`
+- the event body should represent explicitly timestamped incident evidence rather than loose notes
+
 At the same time, it must remain conservative:
 
 - a troubleshooting reply that merely mentions times should not become a timeline artifact
+- a malformed `# Timeline` body with no valid event entries should not become a stable `timeline_artifact`
 - unordered timestamp mentions without timeline markers should not become a timeline artifact
 - relative-time wording without explicit timestamps should not become a timeline artifact
 
@@ -227,6 +261,7 @@ Required coverage:
 
 - a canonical Markdown timeline artifact classifies as `timeline_artifact`
 - a frontmatter-marked timeline artifact classifies as `timeline_artifact`
+- a malformed timeline heading without valid event entries does not classify as `timeline_artifact`
 - a troubleshooting reply with timestamp mentions does not classify as `timeline_artifact`
 - content without explicit timeline markers does not become timeline artifact just because it contains times
 - `shape_evidence_first_result(...)` leaves timeline artifacts unchanged
