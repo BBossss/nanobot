@@ -135,6 +135,30 @@ def has_frontmatter_kind_marker(content: str, *names: str) -> bool:
     return False
 
 
+def has_explicit_timeline_marker(content: str) -> bool:
+    """Return whether the content explicitly declares timeline intent."""
+    text = content.strip()
+    if not text:
+        return False
+    if looks_like_named_artifact(text, "timeline", "event timeline"):
+        return True
+    return has_frontmatter_kind_marker(text, "timeline", "event_timeline")
+
+
+def has_valid_timeline_event_body(content: str) -> bool:
+    """Return whether the content contains at least one complete timeline event entry."""
+    text = content.strip()
+    if not text:
+        return False
+    event_entry_pattern = re.compile(
+        r"(?ms)^\s*-\s*Timestamp:\s*(?P<timestamp>[^\n]+?)\s*\n"
+        r"\s*Event:\s*(?P<event>[^\n]+?)\s*\n"
+        r"\s*Evidence:\s*(?P<evidence>[^\n]+?)"
+        r"(?=\n\s*-\s*Timestamp:|\n#{1,6}\s+|\Z)"
+    )
+    return event_entry_pattern.search(text) is not None
+
+
 def looks_like_named_artifact(content: str, *names: str) -> bool:
     """Return whether the content declares one of the named artifact headings."""
     text = content.strip()
@@ -153,11 +177,7 @@ def looks_like_timeline_artifact(content: str) -> bool:
     text = content.strip()
     if not text:
         return False
-    if looks_like_named_artifact(text, "timeline", "event timeline"):
-        return True
-    if has_frontmatter_kind_marker(text, "timeline", "event_timeline"):
-        return True
-    return False
+    return has_explicit_timeline_marker(text) and has_valid_timeline_event_body(text)
 
 
 def looks_like_root_cause_candidate(content: str) -> bool:
@@ -181,8 +201,6 @@ def infer_structured_artifact_kind_from_context(user_content: str) -> str | None
         return OUTPUT_KIND_REPORT_ARTIFACT
     if any(token in lowered for token in ("case", "工单", "案件")):
         return OUTPUT_KIND_CASE_ARTIFACT
-    if any(token in lowered for token in ("timeline", "时间线", "时序")):
-        return OUTPUT_KIND_TIMELINE_ARTIFACT
     if any(token in lowered for token in ("root cause candidate", "root-cause candidate", "根因候选")):
         return OUTPUT_KIND_ROOT_CAUSE_CANDIDATE
     return None
@@ -221,7 +239,7 @@ def classify_output_kind(
             return OUTPUT_KIND_REPORT_ARTIFACT
         if has_frontmatter_kind_marker(text, "case"):
             return OUTPUT_KIND_CASE_ARTIFACT
-        if has_frontmatter_kind_marker(text, "timeline", "event_timeline"):
+        if has_frontmatter_kind_marker(text, "timeline", "event_timeline") and has_valid_timeline_event_body(text):
             return OUTPUT_KIND_TIMELINE_ARTIFACT
         if has_frontmatter_kind_marker(text, "root_cause_candidate", "root cause candidate"):
             return OUTPUT_KIND_ROOT_CAUSE_CANDIDATE
@@ -256,7 +274,7 @@ def _classify_output_kind_from_content_only(content: str | None) -> str:
             return OUTPUT_KIND_REPORT_ARTIFACT
         if has_frontmatter_kind_marker(text, "case"):
             return OUTPUT_KIND_CASE_ARTIFACT
-        if has_frontmatter_kind_marker(text, "timeline", "event_timeline"):
+        if has_frontmatter_kind_marker(text, "timeline", "event_timeline") and has_valid_timeline_event_body(text):
             return OUTPUT_KIND_TIMELINE_ARTIFACT
         if has_frontmatter_kind_marker(text, "root_cause_candidate", "root cause candidate"):
             return OUTPUT_KIND_ROOT_CAUSE_CANDIDATE

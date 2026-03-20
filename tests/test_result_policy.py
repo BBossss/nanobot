@@ -114,11 +114,98 @@ def test_classification_returns_generic_reply_for_unrelated_plain_reply() -> Non
     )
 
 
-def test_classification_returns_timeline_artifact_for_timeline_like_content() -> None:
+def test_classification_does_not_treat_timeline_like_content_without_valid_event_body_as_timeline_artifact() -> None:
     _assert_classification(
         user_content="整理一下这次故障时间线",
-        final_content="# Timeline\n- 10:00 服务启动\n- 10:05 开始报错\n- 10:08 恢复",
+        final_content="# Timeline\n- 10:00 服务启动\n- 10:05 指标抖动\n- 10:08 恢复",
+        expected_kind="generic_reply",
+    )
+
+
+def test_classification_returns_timeline_artifact_for_canonical_markdown_timeline_body() -> None:
+    _assert_classification(
+        user_content="整理一下这次故障时间线",
+        final_content=(
+            "# Timeline\n"
+            "## Events\n"
+            "- Timestamp: 2026-03-20 10:00\n"
+            "  Event: service started\n"
+            "  Evidence: boot log entries\n"
+            "- Timestamp: 2026-03-20 10:05\n"
+            "  Event: timeout spike\n"
+            "  Evidence: repeated 504s in logs\n"
+        ),
         expected_kind="timeline_artifact",
+    )
+
+
+def test_classification_returns_timeline_artifact_for_frontmatter_marked_timeline_body() -> None:
+    _assert_classification(
+        user_content="整理成 timeline artifact",
+        final_content=(
+            "---\nkind: timeline\n---\n"
+            "# Timeline\n"
+            "## Events\n"
+            "- Timestamp: 2026-03-20 10:00\n"
+            "  Event: service started\n"
+            "  Evidence: boot log entries\n"
+            "- Timestamp: 2026-03-20 10:05\n"
+            "  Event: timeout spike\n"
+            "  Evidence: repeated 504s in logs\n"
+        ),
+        expected_kind="timeline_artifact",
+    )
+
+
+def test_classification_does_not_treat_malformed_timeline_heading_without_valid_events_as_timeline_artifact() -> None:
+    _assert_classification(
+        user_content="整理一下这次故障时间线",
+        final_content=(
+            "# Timeline\n"
+            "## Events\n"
+            "- service started\n"
+            "- timeout spike\n"
+            "- recovery\n"
+        ),
+        expected_kind="generic_reply",
+    )
+
+
+def test_classification_does_not_treat_frontmatter_timeline_marker_with_invalid_body_as_timeline_artifact() -> None:
+    _assert_classification(
+        user_content="整理成 timeline artifact",
+        final_content=(
+            "---\nkind: timeline\n---\n"
+            "# Timeline\n"
+            "## Events\n"
+            "- service started\n"
+            "- timeout spike\n"
+        ),
+        expected_kind="generic_reply",
+    )
+
+
+def test_classification_does_not_treat_timestamp_mentions_in_troubleshooting_reply_as_timeline_artifact() -> None:
+    _assert_classification(
+        user_content="帮我判断这个服务为什么报错",
+        final_content=(
+            "- 10:05 看到 timeout\n"
+            "- 10:07 再次重试失败\n"
+            "当前倾向：数据库连接池耗尽。"
+        ),
+        expected_kind="troubleshooting_reply",
+    )
+
+
+def test_classification_does_not_treat_timestamp_event_evidence_body_without_explicit_timeline_marker_as_timeline_artifact() -> None:
+    _assert_classification(
+        user_content="输出 artifact",
+        final_content=(
+            "Timestamp: 2026-03-20 10:00\n"
+            "Event: service started\n"
+            "Evidence: boot log entries\n"
+        ),
+        expected_kind="generic_reply",
     )
 
 
@@ -130,11 +217,11 @@ def test_classification_does_not_treat_timestamped_troubleshooting_summary_as_ti
     )
 
 
-def test_classification_uses_structured_body_path_for_timeline_frontmatter() -> None:
+def test_classification_does_not_treat_explicit_output_kind_timeline_marker_with_invalid_body_as_timeline_artifact() -> None:
     _assert_classification(
         user_content="整理成 timeline artifact",
-        final_content="---\nowner: nanobot\nscope: readonly\n---\nEvent: 10:05 timeout spike",
-        expected_kind="timeline_artifact",
+        final_content="---\noutput_kind: timeline\nscope: readonly\n---\nEvent: 10:05 timeout spike",
+        expected_kind="generic_reply",
     )
 
 
@@ -146,11 +233,11 @@ def test_classification_recognizes_quoted_frontmatter_report_kind() -> None:
     )
 
 
-def test_classification_recognizes_single_quoted_frontmatter_timeline_output_kind() -> None:
+def test_classification_does_not_treat_single_quoted_frontmatter_timeline_output_kind_with_invalid_body_as_timeline_artifact() -> None:
     _assert_classification(
         user_content="输出 artifact",
         final_content="---\noutput_kind: 'timeline'\nscope: readonly\n---\nEvent: timeout spike",
-        expected_kind="timeline_artifact",
+        expected_kind="generic_reply",
     )
 
 
@@ -202,7 +289,7 @@ def test_classification_does_not_treat_generic_candidate_heading_as_root_cause_c
 def test_timeline_artifact_is_not_a_troubleshooting_rewrite_candidate() -> None:
     assert (
         workflow_result_policy.is_troubleshooting_result_candidate(
-            "# Timeline\n- 10:00 服务启动\n- 10:05 开始报错\n- 10:08 恢复"
+            "# Timeline\n- 10:00 服务启动\n- 10:05 指标抖动\n- 10:08 恢复"
         )
         is False
     )
@@ -256,6 +343,29 @@ def test_evidence_first_still_rewrites_frontmatter_wrapped_troubleshooting_reply
     assert shaped is not None
     assert "当前倾向" in shaped
     assert "不确定点" in shaped
+
+
+def test_shape_evidence_first_result_leaves_canonical_timeline_body_unchanged_byte_for_byte() -> None:
+    session = SimpleNamespace(metadata={"workflow_result_mode": "evidence_first"})
+    final_content = (
+        "# Timeline\n"
+        "## Events\n"
+        "- Timestamp: 2026-03-20 10:00\n"
+        "  Event: service started\n"
+        "  Evidence: boot log entries\n"
+        "- Timestamp: 2026-03-20 10:05\n"
+        "  Event: timeout spike\n"
+        "  Evidence: repeated 504s in logs\n"
+    )
+
+    shaped = workflow_result_policy.shape_evidence_first_result(
+        session=session,
+        user_content="整理一下这次故障时间线",
+        final_content=final_content,
+        messages=None,
+    )
+
+    assert shaped == final_content
 
 
 @pytest.mark.parametrize(
@@ -356,7 +466,7 @@ def test_candidate_eligibility_forwards_messages_when_user_content_is_present(
             False,
         ),
         (
-            "# Timeline\n- 10:00 服务启动\n- 10:05 开始报错\n- 10:08 恢复",
+            "# Timeline\n- 10:00 服务启动\n- 10:05 指标抖动\n- 10:08 恢复",
             False,
         ),
         (
