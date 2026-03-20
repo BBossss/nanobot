@@ -564,6 +564,163 @@ def test_shape_evidence_first_result_leaves_cross_target_timeline_body_unchanged
     assert shaped == final_content
 
 
+def test_shape_evidence_first_result_inserts_timeline_summary_into_troubleshooting_reply() -> None:
+    session = SimpleNamespace(metadata={"workflow_result_mode": "evidence_first"})
+
+    shaped = workflow_result_policy.shape_evidence_first_result(
+        session=session,
+        user_content="帮我判断这个服务为什么报错",
+        final_content=(
+            "已确认事实：日志里连续出现超时。\n"
+            "根因已确认就是存储后端连接不稳定。"
+        ),
+        messages=None,
+        timeline_summary="时间线补充：最早在 10:21:03 由 node-a,node-b 出现同类超时；10:22:11 起 node-c 出现本地 permission denied。",
+    )
+
+    assert shaped == (
+        "已确认事实：日志里连续出现超时\n"
+        "时间线补充：最早在 10:21:03 由 node-a,node-b 出现同类超时；10:22:11 起 node-c 出现本地 permission denied。\n"
+        "当前倾向：现有证据更偏向存储后端连接不稳定。\n"
+        "不确定点：还需要再核对一轮只读证据。\n"
+        "下一步：建议先补一条最能验证当前判断的只读检查。"
+    )
+
+
+@pytest.mark.parametrize(
+    ("final_content", "timeline_summary", "expected"),
+    [
+        (
+            "已确认事实：日志里连续出现超时。\n根因已确认就是存储后端连接不稳定。",
+            None,
+            "已确认事实：日志里连续出现超时\n"
+            "当前倾向：现有证据更偏向存储后端连接不稳定。\n"
+            "不确定点：还需要再核对一轮只读证据。\n"
+            "下一步：建议先补一条最能验证当前判断的只读检查。",
+        ),
+        (
+            "# Timeline\n"
+            "Incident: storage timeout incident\n"
+            "Target: node-a,node-b,node-c\n"
+            "\n"
+            "## Events\n"
+            "\n"
+            "- Timestamp: 2026-03-20T10:21:03\n"
+            "  Event: shared timeout while connecting to storage backend appeared on node-a,node-b\n"
+            "  Evidence: 2026-03-20 10:21:03 timeout while connecting to storage backend\n"
+            "  Target: node-a,node-b\n"
+            "  Source: search_log\n"
+            "  Scope: shared\n",
+            "时间线补充：最早在 10:21:03 由 node-a,node-b 出现同类超时。",
+            "# Timeline\n"
+            "Incident: storage timeout incident\n"
+            "Target: node-a,node-b,node-c\n"
+            "\n"
+            "## Events\n"
+            "\n"
+            "- Timestamp: 2026-03-20T10:21:03\n"
+            "  Event: shared timeout while connecting to storage backend appeared on node-a,node-b\n"
+            "  Evidence: 2026-03-20 10:21:03 timeout while connecting to storage backend\n"
+            "  Target: node-a,node-b\n"
+            "  Source: search_log\n"
+            "  Scope: shared\n",
+        ),
+        (
+            "已确认事实：日志里连续出现超时。\n时间线补充：最早在 10:21:03 由 node-a,node-b 出现同类超时。\n根因已确认就是存储后端连接不稳定。",
+            "时间线补充：最早在 10:21:03 由 node-a,node-b 出现同类超时。",
+            "已确认事实：日志里连续出现超时。\n"
+            "时间线补充：最早在 10:21:03 由 node-a,node-b 出现同类超时\n"
+            "当前倾向：现有证据更偏向存储后端连接不稳定。\n"
+            "不确定点：还需要再核对一轮只读证据。\n"
+            "下一步：建议先补一条最能验证当前判断的只读检查。",
+        ),
+    ],
+)
+def test_shape_evidence_first_result_skips_timeline_summary_in_non_insertion_cases(
+    final_content: str,
+    timeline_summary: str | None,
+    expected: str,
+) -> None:
+    session = SimpleNamespace(metadata={"workflow_result_mode": "evidence_first"})
+
+    shaped = workflow_result_policy.shape_evidence_first_result(
+        session=session,
+        user_content="帮我判断这个服务为什么报错",
+        final_content=final_content,
+        messages=None,
+        timeline_summary=timeline_summary,
+    )
+
+    assert shaped == expected
+
+
+def test_shape_evidence_first_result_leaves_timeline_artifact_unchanged_when_summary_is_present() -> None:
+    session = SimpleNamespace(metadata={"workflow_result_mode": "evidence_first"})
+    final_content = (
+        "# Timeline\n"
+        "Incident: storage timeout incident\n"
+        "Target: node-a,node-b,node-c\n"
+        "\n"
+        "## Events\n"
+        "\n"
+        "- Timestamp: 2026-03-20T10:21:03\n"
+        "  Event: shared timeout while connecting to storage backend appeared on node-a,node-b\n"
+        "  Evidence: 2026-03-20 10:21:03 timeout while connecting to storage backend\n"
+        "  Target: node-a,node-b\n"
+        "  Source: search_log\n"
+        "  Scope: shared\n"
+    )
+
+    shaped = workflow_result_policy.shape_evidence_first_result(
+        session=session,
+        user_content="整理一下这次故障时间线",
+        final_content=final_content,
+        messages=None,
+        timeline_summary="时间线补充：最早在 10:21:03 由 node-a,node-b 出现同类超时。",
+    )
+
+    assert shaped == final_content
+
+
+def test_shape_evidence_first_result_leaves_timeline_summary_marker_unchanged_when_already_present() -> None:
+    session = SimpleNamespace(metadata={"workflow_result_mode": "evidence_first"})
+    final_content = (
+        "已确认事实：日志里连续出现超时。\n"
+        "时间线补充：最早在 10:21:03 由 node-a,node-b 出现同类超时。\n"
+        "根因已确认就是存储后端连接不稳定。"
+    )
+
+    shaped = workflow_result_policy.shape_evidence_first_result(
+        session=session,
+        user_content="帮我判断这个服务为什么报错",
+        final_content=final_content,
+        messages=None,
+        timeline_summary="时间线补充：最早在 10:21:03 由 node-a,node-b 出现同类超时。",
+    )
+
+    assert shaped == (
+        "已确认事实：日志里连续出现超时。\n"
+        "时间线补充：最早在 10:21:03 由 node-a,node-b 出现同类超时\n"
+        "当前倾向：现有证据更偏向存储后端连接不稳定。\n"
+        "不确定点：还需要再核对一轮只读证据。\n"
+        "下一步：建议先补一条最能验证当前判断的只读检查。"
+    )
+
+
+def test_shape_evidence_first_result_does_not_insert_timeline_summary_for_non_rewrite_eligible_kind() -> None:
+    session = SimpleNamespace(metadata={"workflow_result_mode": "evidence_first"})
+
+    shaped = workflow_result_policy.shape_evidence_first_result(
+        session=session,
+        user_content="帮我整理一下巡检报告",
+        final_content="# Report\nSummary: service unhealthy\nEvidence: timeout seen in logs",
+        messages=None,
+        timeline_summary="时间线补充：最早在 10:21:03 由 node-a,node-b 出现同类超时。",
+    )
+
+    assert shaped == "# Report\nSummary: service unhealthy\nEvidence: timeout seen in logs"
+
+
 @pytest.mark.parametrize(
     ("user_content", "final_content"),
     [

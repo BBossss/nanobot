@@ -396,6 +396,7 @@ def shape_evidence_first_result(
     user_content: str,
     final_content: str | None,
     messages: list[dict[str, Any]] | None = None,
+    timeline_summary: str | None = None,
 ) -> str | None:
     """Boundedly reshape troubleshooting conclusions when evidence-first mode is active."""
     if final_content is None or session is None:
@@ -416,6 +417,8 @@ def shape_evidence_first_result(
         if tool_summary := summarize_tool_evidence(messages):
             sections.append(tool_summary)
     body = rewrite_remaining_strong_conclusions("\n".join(sections).strip())
+    if timeline_summary and "时间线补充：" not in final_content:
+        body = _insert_timeline_summary_into_body(body, timeline_summary)
     evidence_signals = count_evidence_signals(body)
     has_explicit_evidence_labels = any(marker in body for marker in ("已确认事实", "关键证据"))
 
@@ -431,3 +434,12 @@ def shape_evidence_first_result(
     if not body:
         body = final_content.strip()
     return ensure_minimal_uncertainty_and_next_step(body)
+
+
+def _insert_timeline_summary_into_body(body: str, timeline_summary: str) -> str:
+    summary = timeline_summary.strip()
+    if not summary:
+        return body
+    if not body.strip():
+        return summary
+    return f"{body.rstrip()}\n{summary}"
