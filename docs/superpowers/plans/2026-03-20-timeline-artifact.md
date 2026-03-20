@@ -20,8 +20,8 @@
   Responsibility: add formatter/schema tests for stable artifact shape without rewriting existing extractor behavior.
 - Modify: `tests/test_result_policy.py`
   Responsibility: add focused timeline-artifact classification and bypass regressions, including malformed-heading negatives.
-- Inspect: `tests/test_agentloop_troubleshooting_flow.py`
-  Responsibility: preserve evidence-first behavior and artifact bypass behavior.
+- Modify: `tests/test_agentloop_troubleshooting_flow.py`
+  Responsibility: add one timeline-specific evidence-first bypass regression through `AgentLoop` and preserve existing artifact bypass behavior.
 - Modify: `docs/superpowers/plans/2026-03-20-timeline-artifact.md`
   Responsibility: reflect actual execution status.
 
@@ -39,7 +39,9 @@ Add policy-level tests for:
 - canonical Markdown timeline artifact with `# Timeline`, `## Events`, and event entries containing `Timestamp`, `Event`, `Evidence` classifies as `timeline_artifact`
 - frontmatter-marked timeline artifact with the same valid event body classifies as `timeline_artifact`
 - malformed `# Timeline` heading without valid event entries does not classify as `timeline_artifact`
+- frontmatter timeline marker with invalid body does not classify as `timeline_artifact`
 - troubleshooting reply with timestamp mentions does not classify as `timeline_artifact`
+- `Timestamp/Event/Evidence` body without explicit timeline marker does not classify as `timeline_artifact`
 - timeline artifact with valid event body remains unchanged under `shape_evidence_first_result(...)`
 
 At least one unchanged-shaping test must assert a valid `Timestamp/Event/Evidence` timeline body is returned byte-for-byte.
@@ -65,9 +67,57 @@ git commit -m "test: add stable timeline artifact policy coverage"
 
 If you do not want a red commit on this branch, skip the commit and proceed directly to Task 2.
 
+### Task 2: Tighten timeline classification first and make policy tests green
+
+**Files:**
+- Modify: `nanobot/agent/workflow/result_policy.py`
+- Modify: `tests/test_result_policy.py`
+
+- [ ] **Step 1: Implement valid timeline event-body detection**
+
+Update `result_policy.py` so `timeline_artifact` classification requires both:
+
+- timeline intent marker (`# Timeline`, `# Event Timeline`, or explicit frontmatter marker)
+- valid event-body shape, including at least one event entry with `Timestamp`, `Event`, and `Evidence`
+
+Keep the detection conservative:
+
+- timestamp mentions alone must not qualify
+- malformed timeline headings must not qualify
+- frontmatter markers with invalid body must not qualify
+- `Timestamp/Event/Evidence` bodies without explicit timeline markers must not qualify
+- ordinary troubleshooting replies remain shapeable
+
+- [ ] **Step 2: Run focused timeline policy tests**
+
+Run:
+
+```bash
+python3 -m pytest tests/test_result_policy.py -k "timeline_artifact or malformed_timeline or timeline_body" -v
+```
+
+Expected: PASS
+
+- [ ] **Step 3: Run broader result-policy regressions**
+
+Run:
+
+```bash
+python3 -m pytest tests/test_result_policy.py -k "timeline or evidence_first or shaping or candidate or eligibility" -v
+```
+
+Expected: PASS
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add nanobot/agent/workflow/result_policy.py tests/test_result_policy.py
+git commit -m "refactor: tighten stable timeline artifact classification"
+```
+
 ## Chunk 2: Add Stable Timeline Artifact Formatting
 
-### Task 2: Add minimal timeline artifact structure and formatter helpers
+### Task 3: Add minimal timeline artifact structure and formatter helpers
 
 **Files:**
 - Modify: `nanobot/agent/timeline.py`
@@ -128,57 +178,45 @@ git add nanobot/agent/timeline.py tests/test_log_timeline.py
 git commit -m "feat: add stable timeline artifact formatter"
 ```
 
-## Chunk 3: Tighten Timeline Artifact Classification
+## Chunk 3: Add AgentLoop Rewrite-Protection Regression
 
-### Task 3: Require valid event-body shape for `timeline_artifact`
+### Task 4: Add one end-to-end timeline artifact bypass regression
 
 **Files:**
-- Modify: `nanobot/agent/workflow/result_policy.py`
-- Modify: `tests/test_result_policy.py`
+- Modify: `tests/test_agentloop_troubleshooting_flow.py`
 
-- [ ] **Step 1: Implement valid timeline event-body detection**
+- [ ] **Step 1: Write a failing AgentLoop regression**
 
-Update `result_policy.py` so `timeline_artifact` classification requires both:
+Add one focused end-to-end test proving a valid timeline artifact body remains unchanged when `workflow_result_mode = evidence_first`.
 
-- timeline intent marker (`# Timeline`, `# Event Timeline`, or explicit frontmatter marker)
-- valid event-body shape, including at least one event entry with `Timestamp`, `Event`, and `Evidence`
+Use a realistic body with:
 
-Keep the detection conservative:
+- `# Timeline`
+- `## Events`
+- at least one event containing `Timestamp`, `Event`, and `Evidence`
 
-- timestamp mentions alone must not qualify
-- malformed timeline headings must not qualify
-- ordinary troubleshooting replies remain shapeable
-
-- [ ] **Step 2: Run focused timeline policy tests**
+- [ ] **Step 2: Run the focused AgentLoop regression to verify current behavior**
 
 Run:
 
 ```bash
-python3 -m pytest tests/test_result_policy.py -k "timeline_artifact or malformed_timeline or timeline_body" -v
+python3 -m pytest tests/test_agentloop_troubleshooting_flow.py -k "timeline artifact" -v
 ```
 
-Expected: PASS
+Expected: PASS if behavior is already preserved, or FAIL if the integration path is not yet protected.
 
-- [ ] **Step 3: Run broader result-policy regressions**
+If it passes immediately, that is acceptable because the test is still new regression coverage.
 
-Run:
-
-```bash
-python3 -m pytest tests/test_result_policy.py -k "timeline or evidence_first or shaping or candidate or eligibility" -v
-```
-
-Expected: PASS
-
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
-git add nanobot/agent/workflow/result_policy.py tests/test_result_policy.py
-git commit -m "refactor: tighten stable timeline artifact classification"
+git add tests/test_agentloop_troubleshooting_flow.py
+git commit -m "test: cover timeline artifact rewrite bypass"
 ```
 
 ## Chunk 4: Final Verification And Plan Sync
 
-### Task 4: Verify behavior preservation and sync documentation
+### Task 5: Verify behavior preservation and sync documentation
 
 **Files:**
 - Modify: `docs/superpowers/plans/2026-03-20-timeline-artifact.md`
