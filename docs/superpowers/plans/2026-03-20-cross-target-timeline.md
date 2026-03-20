@@ -287,7 +287,7 @@ If `result_policy.py` was not changed, omit it from `git add`.
 **Files:**
 - Modify: `docs/superpowers/plans/2026-03-20-cross-target-timeline.md`
 
-- [ ] **Step 1: Run focused timeline, multi-target, and policy regressions**
+- [x] **Step 1: Run focused timeline, multi-target, and policy regressions**
 
 Run:
 
@@ -297,7 +297,7 @@ python3 -m pytest tests/test_log_timeline.py tests/test_multi_target_troubleshoo
 
 Expected: PASS
 
-- [ ] **Step 2: Run the full timeline/multi-target/policy slices**
+- [x] **Step 2: Run the full timeline/multi-target/policy slices**
 
 Run:
 
@@ -307,7 +307,7 @@ python3 -m pytest tests/test_log_timeline.py tests/test_multi_target_troubleshoo
 
 Expected: PASS
 
-- [ ] **Step 3: Optionally run the full suite if no unrelated failures are known**
+- [x] **Step 3: Optionally run the full suite if no unrelated failures are known**
 
 Run:
 
@@ -317,11 +317,11 @@ python3 -m pytest -q
 
 Expected: PASS, or document any unrelated pre-existing failure clearly.
 
-- [ ] **Step 4: Mark completed plan checkboxes**
+- [x] **Step 4: Mark completed plan checkboxes**
 
 Update this plan to reflect actual execution status.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add docs/superpowers/plans/2026-03-20-cross-target-timeline.md
