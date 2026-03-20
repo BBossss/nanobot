@@ -606,7 +606,7 @@ async def test_workflow_result_mode_does_not_rewrite_timeline_artifact_body(tmp_
         "\n"
         "## Coverage Note\n"
         "\n"
-        "Only evidence with explicit timestamps is included in this timeline.\n"
+        "Only evidence with explicit timestamps is included in this timeline."
     )
     loop.provider.chat = AsyncMock(return_value=LLMResponse(content=body, tool_calls=[]))
     session = loop.sessions.get_or_create("cli:workflow")
@@ -616,7 +616,7 @@ async def test_workflow_result_mode_does_not_rewrite_timeline_artifact_body(tmp_
 
     result = await loop.process_direct("storage 集群出问题了", session_key="cli:workflow")
 
-    assert result == body.strip()
+    assert result == body
 
 
 @pytest.mark.asyncio
