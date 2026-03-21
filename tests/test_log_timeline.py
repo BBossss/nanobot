@@ -6,7 +6,6 @@ from nanobot.agent import timeline as timeline_module
 from nanobot.agent.timeline import (
     TimelineArtifact,
     TimelineArtifactEvent,
-    build_cross_target_timeline_artifact,
     build_log_timeline,
     extract_log_events,
     format_timeline_artifact,
