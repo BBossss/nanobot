@@ -232,6 +232,33 @@ nanobot
 - `api_key`
 - `model`
 
+### OpenAI-compatible gateway 示例
+
+CRS 以及类似的 OpenAI-compatible gateway 都沿用现有的 `providers.custom` 路径，
+不需要单独的 provider。这里的 `OpenAI-compatible gateway` 是通用说法，CRS 只是示例。
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "provider": "custom",
+      "model": "gpt-4.1-mini"
+    }
+  },
+  "providers": {
+    "custom": {
+      "apiBase": "https://crs.example/v1",
+      "apiKey": "sk-xxx",
+      "extraHeaders": {
+        "X-Example-Header": "value"
+      }
+    }
+  }
+}
+```
+
+使用 `nanobot doctor` 验证网关路径、模型和额外认证头。
+
 默认首跑配置路径：
 
 ```json

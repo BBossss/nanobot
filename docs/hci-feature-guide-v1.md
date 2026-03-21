@@ -369,15 +369,8 @@ CLI：
 
 ## 5.1 CRS（claude-relay-service）接入说明
 
-当使用开源聚合平台 CRS 时，建议优先使用 OpenAI 兼容路由：
-
-- 推荐：`/droid/openai`
-- 谨慎使用：`/openai`（该路由偏 Responses 形态）
-
-原因：
-
-- 当前 nanobot 的 `custom` provider 使用 OpenAI 兼容 `chat.completions` 方式。
-- CRS 的 `/droid/openai` 路由与该模式兼容度更高。
+当使用 CRS 或类似的 OpenAI-compatible gateway 时，主路径就是现有的 `providers.custom`。
+这里不需要单独增加专用 provider；`OpenAI-compatible gateway` 只是通用说法，CRS 只是一个示例。
 
 推荐配置示例：
 
@@ -398,15 +391,20 @@ CLI：
 }
 ```
 
-验证步骤：
+如需额外认证头，放在 `providers.custom.extraHeaders` 中。
+
+验证步骤优先使用：
 
 ```bash
-nanobot status
+nanobot doctor
+```
+
+如需进一步确认连通性，再使用：
+
+```bash
 nanobot agent -m "回复 ok"
 nanobot gateway
 ```
-
-如 CRS 环境要求额外认证头，可通过 `providers.custom.extraHeaders` 添加。
 
 ---
 
