@@ -48,6 +48,7 @@
 
 ## Commit & Pull Request Guidelines
 - 使用仓库已有前缀：`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`。
+- 推送到远端前，先在本地执行一次 `ruff check`，避免把可提前发现的 lint 问题带到 CI。
 - PR 描述包含：变更摘要、影响范围、测试命令、关联 issue。
 - 仅当 UI/文档渲染变化时提交截图。
 
