@@ -246,6 +246,33 @@ If minimal config is missing, HCIGuard automatically starts an onboarding wizard
 - `api_key`
 - `model`
 
+### OpenAI-compatible gateway example
+
+CRS and similar OpenAI-compatible gateways use the existing `providers.custom` path.
+Keep `OpenAI-compatible gateway` as the general term; CRS is only one example.
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "provider": "custom",
+      "model": "gpt-4.1-mini"
+    }
+  },
+  "providers": {
+    "custom": {
+      "apiBase": "https://crs.example/v1",
+      "apiKey": "sk-xxx",
+      "extraHeaders": {
+        "X-Example-Header": "value"
+      }
+    }
+  }
+}
+```
+
+Run `nanobot doctor` to validate the gateway path, model, and headers.
+
 Default first-run path:
 
 ```json
