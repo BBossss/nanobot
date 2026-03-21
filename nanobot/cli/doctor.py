@@ -46,6 +46,8 @@ def run_doctor(*, config_path: Path, workspace_path: Path, config: Config) -> li
         return checks
 
     status, detail = probe_model_connectivity(config)
+    if config.agents.defaults.provider == "custom" and status == "blocked":
+        detail = _custom_gateway_connectivity_guidance(detail)
     checks.append(DoctorCheck(name="模型连通性", status=status, detail=detail))
     return checks
 
@@ -55,6 +57,8 @@ def probe_model_connectivity(config: Config) -> tuple[str, str]:
     try:
         return asyncio.run(_probe_model_connectivity_async(config))
     except Exception as exc:
+        if config.agents.defaults.provider == "custom":
+            return "blocked", _custom_gateway_connectivity_guidance(str(exc))
         return "blocked", str(exc)
 
 
@@ -93,10 +97,29 @@ def _check_minimal_provider_fields(config: Config) -> tuple[str, str]:
         return "blocked", "missing provider"
     if provider_name == "custom":
         if not provider or not provider.api_base:
-            return "blocked", "missing base_url"
+            return "blocked", _custom_gateway_field_guidance()
         if not provider.api_key:
-            return "blocked", "missing api_key"
+            return "blocked", _custom_gateway_field_guidance()
         return "ok", f"{provider_name}:{model}"
     if not provider or not provider.api_key:
         return "blocked", f"missing api_key for {provider_name}"
     return "ok", f"{provider_name}:{model}"
+
+
+def _custom_gateway_field_guidance() -> str:
+    """Explain required custom gateway fields in operator-friendly language."""
+    return (
+        "OpenAI-compatible gateway config is incomplete: set the Base URL with the /v1 path, "
+        "API key, model, and any required extra headers."
+    )
+
+
+def _custom_gateway_connectivity_guidance(detail: str) -> str:
+    """Add gateway troubleshooting hints to a blocked custom connectivity result."""
+    guidance = (
+        "Check the OpenAI-compatible gateway Base URL with the /v1 path, API key, model, "
+        "and any required extra headers."
+    )
+    if detail:
+        return f"{detail}. {guidance}"
+    return guidance

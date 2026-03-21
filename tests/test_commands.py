@@ -7,6 +7,7 @@ from typer.testing import CliRunner
 
 from nanobot.agent.tools.shell import ExecTool
 from nanobot.cli.commands import app
+from nanobot.cli.doctor import run_doctor
 from nanobot.config.schema import Config
 from nanobot.providers.litellm_provider import LiteLLMProvider
 from nanobot.providers.openai_codex_provider import _strip_model_prefix
@@ -243,6 +244,56 @@ def test_doctor_reports_blocked_when_provider_config_missing(mock_paths):
     assert "配置" in result.stdout
     assert "模型连通性" in result.stdout
     assert "blocked" in result.stdout
+
+
+def test_doctor_operator_friendly_custom_provider_fields(mock_paths):
+    config_file, workspace_dir = mock_paths
+    config = Config()
+    config.agents.defaults.provider = "custom"
+    config.agents.defaults.model = "gpt-4.1-mini"
+    config_file.write_text(config.model_dump_json(by_alias=True))
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+
+    checks = run_doctor(config_path=config_file, workspace_path=workspace_dir, config=config)
+    field_check = next(check for check in checks if check.name == "Provider 字段")
+
+    assert field_check.status == "blocked"
+    assert "OpenAI-compatible gateway" in field_check.detail
+    assert "/v1" in field_check.detail
+    assert "API key" in field_check.detail
+    assert "model" in field_check.detail
+    assert "extra headers" in field_check.detail
+
+
+def test_doctor_gateway_path_and_headers_guidance(mock_paths):
+    config_file, workspace_dir = mock_paths
+    config = Config()
+    config.agents.defaults.provider = "custom"
+    config.agents.defaults.model = "gpt-4.1-mini"
+    config.providers.custom.api_base = "http://gw.example/v1"
+    config.providers.custom.api_key = "secret-key"
+    config_file.write_text(config.model_dump_json(by_alias=True))
+    workspace_dir.mkdir(parents=True, exist_ok=True)
+
+    with patch(
+        "nanobot.cli.doctor.probe_model_connectivity",
+        return_value=("blocked", "timeout talking to gateway"),
+    ):
+        checks = run_doctor(
+            config_path=config_file,
+            workspace_path=workspace_dir,
+            config=config,
+        )
+
+    connectivity_check = next(check for check in checks if check.name == "模型连通性")
+
+    assert connectivity_check.status == "blocked"
+    assert "timeout talking to gateway" in connectivity_check.detail
+    assert "OpenAI-compatible gateway" in connectivity_check.detail
+    assert "/v1" in connectivity_check.detail
+    assert "API key" in connectivity_check.detail
+    assert "model" in connectivity_check.detail
+    assert "extra headers" in connectivity_check.detail
 
 
 def test_doctor_reports_ok_when_minimal_custom_provider_is_ready(mock_paths):
