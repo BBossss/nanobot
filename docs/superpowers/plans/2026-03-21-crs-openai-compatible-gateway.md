@@ -33,7 +33,7 @@
 - Modify: `tests/test_commands.py`
 - Reference: `nanobot/cli/commands.py`
 
-- [ ] **Step 1: Add a failing onboarding copy test**
+- [x] **Step 1: Add a failing onboarding copy test**
 
 ```python
 def test_onboard_mentions_crs_as_openai_compatible_gateway(mock_paths):
@@ -47,28 +47,28 @@ def test_onboard_mentions_crs_as_openai_compatible_gateway(mock_paths):
     assert "CRS" in result.stdout
 ```
 
-- [ ] **Step 2: Run the focused onboarding test to verify it fails**
+- [x] **Step 2: Run the focused onboarding test to verify it fails**
 
 Run: `python3 -m pytest tests/test_commands.py -k "onboard_mentions_crs" -v`
 Expected: FAIL because onboarding currently does not mention CRS.
 
-- [ ] **Step 3: Update onboarding headline copy with the minimal CRS hint**
+- [x] **Step 3: Update onboarding headline copy with the minimal CRS hint**
 
 ```python
 console.print("[cyan]Configure your OpenAI-compatible gateway (for example, CRS)[/cyan]")
 ```
 
-- [ ] **Step 4: Re-run the focused onboarding test**
+- [x] **Step 4: Re-run the focused onboarding test**
 
 Run: `python3 -m pytest tests/test_commands.py -k "onboard_mentions_crs" -v`
 Expected: PASS
 
-- [ ] **Step 5: Re-run the minimal config shape regression**
+- [x] **Step 5: Re-run the minimal config shape regression**
 
 Run: `python3 -m pytest tests/test_commands.py::test_onboard_writes_minimal_openai_compatible_config -v`
 Expected: PASS and the generated config still uses the existing `providers.custom` fields.
 
-- [ ] **Step 6: Commit the onboarding copy change**
+- [x] **Step 6: Commit the onboarding copy change**
 
 ```bash
 git add tests/test_commands.py nanobot/cli/commands.py
@@ -81,7 +81,7 @@ git commit -m "feat: clarify crs onboarding gateway path"
 - Modify: `tests/test_commands.py`
 - Modify: `nanobot/cli/doctor.py`
 
-- [ ] **Step 1: Add failing doctor guidance tests for missing fields**
+- [x] **Step 1: Add failing doctor guidance tests for missing fields**
 
 ```python
 def test_doctor_missing_custom_fields_are_operator_friendly(mock_paths):
@@ -112,12 +112,12 @@ def test_doctor_connectivity_failure_suggests_gateway_path_and_headers(mock_path
     assert "extra headers" in result.stdout
 ```
 
-- [ ] **Step 2: Run the focused doctor tests to verify they fail**
+- [x] **Step 2: Run the focused doctor tests to verify they fail**
 
 Run: `python3 -m pytest tests/test_commands.py -k "operator_friendly or gateway_path_and_headers" -v`
 Expected: FAIL because doctor currently emits terse generic details.
 
-- [ ] **Step 3: Refine custom-provider doctor details without changing status semantics**
+- [x] **Step 3: Refine custom-provider doctor details without changing status semantics**
 
 ```python
 if provider_name == "custom":
@@ -135,22 +135,22 @@ if result.finish_reason == "error" or (result.content or "").startswith("Error:"
     )
 ```
 
-- [ ] **Step 4: Re-run the focused doctor tests**
+- [x] **Step 4: Re-run the focused doctor tests**
 
 Run: `python3 -m pytest tests/test_commands.py -k "operator_friendly or gateway_path_and_headers" -v`
 Expected: PASS
 
-- [ ] **Step 5: Run the broader CLI regression slice**
+- [x] **Step 5: Run the broader CLI regression slice**
 
 Run: `python3 -m pytest tests/test_commands.py -k "onboard or doctor or quickstart" -v`
 Expected: PASS
 
-- [ ] **Step 6: Re-run the ready-state doctor regression**
+- [x] **Step 6: Re-run the ready-state doctor regression**
 
 Run: `python3 -m pytest tests/test_commands.py::test_doctor_reports_ok_when_minimal_custom_provider_is_ready -v`
 Expected: PASS and the doctor still reports `ok` for a valid minimal custom gateway setup.
 
-- [ ] **Step 7: Commit the doctor guidance updates**
+- [x] **Step 7: Commit the doctor guidance updates**
 
 ```bash
 git add tests/test_commands.py nanobot/cli/doctor.py
@@ -166,14 +166,14 @@ git commit -m "feat: improve crs gateway doctor guidance"
 - Reference: `nanobot/cli/commands.py`
 - Reference: `nanobot/cli/doctor.py`
 
-- [ ] **Step 1: Add a failing documentation expectation test by inspection**
+- [x] **Step 1: Add a failing documentation expectation test by inspection**
 
 Check that `README.md` currently lacks a concise CRS example near Quick Start.
 
 Run: `rg -n "CRS|extraHeaders" README.md`
 Expected: either no match or no complete Quick Start CRS example.
 
-- [ ] **Step 2: Add the minimal CRS setup section to the Quick Start area**
+- [x] **Step 2: Add the minimal CRS setup section to the Quick Start area**
 
 ```md
 CRS and similar OpenAI-compatible gateways use the existing `providers.custom` path:
@@ -199,12 +199,12 @@ CRS and similar OpenAI-compatible gateways use the existing `providers.custom` p
 ```
 ```
 
-- [ ] **Step 3: Verify the README now includes the intended operator path**
+- [x] **Step 3: Verify the README now includes the intended operator path**
 
 Run: `rg -n "CRS|providers\\.custom|extraHeaders|nanobot doctor" README.md`
 Expected: matches for all of the above in the Quick Start area.
 
-- [ ] **Step 4: Commit the English README update**
+- [x] **Step 4: Commit the English README update**
 
 ```bash
 git add README.md
@@ -217,13 +217,13 @@ git commit -m "docs: add crs quickstart example"
 - Modify: `README.zh-CN.md`
 - Modify: `docs/hci-feature-guide-v1.md`
 
-- [ ] **Step 1: Add the matching Chinese CRS setup guidance**
+- [x] **Step 1: Add the matching Chinese CRS setup guidance**
 
 ```md
 CRS 这类 OpenAI-compatible 网关沿用现有 `providers.custom` 路径，不需要单独新增 provider。
 ```
 
-- [ ] **Step 2: Align the feature guide wording with the same operator story**
+- [x] **Step 2: Align the feature guide wording with the same operator story**
 
 ```md
 - 主入口仍是 `providers.custom`
@@ -231,12 +231,12 @@ CRS 这类 OpenAI-compatible 网关沿用现有 `providers.custom` 路径，不�
 - 配置完成后优先执行 `nanobot doctor`
 ```
 
-- [ ] **Step 3: Verify documentation consistency**
+- [x] **Step 3: Verify documentation consistency**
 
 Run: `rg -n "CRS|providers\\.custom|extraHeaders|nanobot doctor" README.zh-CN.md docs/hci-feature-guide-v1.md`
 Expected: matching guidance appears in both files with no mention of a dedicated CRS provider.
 
-- [ ] **Step 4: Commit the Chinese docs alignment**
+- [x] **Step 4: Commit the Chinese docs alignment**
 
 ```bash
 git add README.zh-CN.md docs/hci-feature-guide-v1.md
@@ -252,21 +252,21 @@ git commit -m "docs: align crs gateway setup docs"
 - Verify: `README.zh-CN.md`
 - Verify: `docs/hci-feature-guide-v1.md`
 
-- [ ] **Step 1: Run the full command test file**
+- [x] **Step 1: Run the full command test file**
 
 Run: `python3 -m pytest tests/test_commands.py -v`
 Expected: PASS
 
-- [ ] **Step 2: Run the full test suite**
+- [x] **Step 2: Run the full test suite**
 
 Run: `python3 -m pytest -q`
 Expected: PASS
 
-- [ ] **Step 3: Update the plan checklist as work completes**
+- [x] **Step 3: Update the plan checklist as work completes**
 
 Mark completed steps in this plan file so the execution state stays current.
 
-- [ ] **Step 4: Commit the final verification state if the plan file changed**
+- [x] **Step 4: Commit the final verification state if the plan file changed**
 
 ```bash
 git add docs/superpowers/plans/2026-03-21-crs-openai-compatible-gateway.md

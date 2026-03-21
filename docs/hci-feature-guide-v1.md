@@ -385,7 +385,7 @@ CLI：
   "providers": {
     "custom": {
       "apiKey": "cr_xxx",
-      "apiBase": "http://<crs-host>:3000/droid/openai"
+      "apiBase": "http://<crs-host>:3000/droid/openai/v1"
     }
   }
 }
