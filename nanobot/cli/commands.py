@@ -187,7 +187,9 @@ def _run_minimal_onboarding(*, headline: str | None = None) -> None:
 
     if headline:
         console.print(headline)
-    console.print("[cyan]Configure your default OpenAI-compatible gateway[/cyan]")
+    console.print(
+        "[cyan]Configure your default OpenAI-compatible gateway (for example, CRS)[/cyan]"
+    )
 
     try:
         base_url = typer.prompt(

@@ -66,6 +66,21 @@ def test_onboard_fresh_install(mock_paths):
     assert (workspace_dir / "memory" / "MEMORY.md").exists()
 
 
+def test_onboard_mentions_crs(mock_paths):
+    config_file, _workspace_dir = mock_paths
+
+    result = runner.invoke(
+        app,
+        ["onboard"],
+        input="http://gw.example/v1\nsecret-key\ngpt-4.1-mini\n",
+    )
+
+    assert result.exit_code == 0
+    assert "OpenAI-compatible gateway" in result.stdout
+    assert "CRS" in result.stdout
+    assert config_file.exists()
+
+
 def test_onboard_existing_config_refresh(mock_paths):
     """Existing config should be updated in place through the wizard."""
     config_file, workspace_dir = mock_paths
